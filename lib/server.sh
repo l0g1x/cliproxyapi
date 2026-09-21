@@ -89,7 +89,15 @@ _wait_ready() { # poll /v1/models for up to ~15s
 server_upgrade() { log "pulling latest image"; _dc pull -q; _dc up -d; server_status; }
 server_start()   { log "docker compose up -d";   _dc up -d; }
 server_stop()    { log "docker compose stop";    _dc stop; }
-server_restart() { log "docker compose restart"; _dc restart cli-proxy-api; _wait_ready || true; server_status; }
+server_restart() {
+  # `up -d` creates the container if it doesn't exist yet and recreates it if the compose
+  # file changed; `restart` alone is a no-op in both cases. Then restart to reload config.
+  log "docker compose up -d && restart"
+  _dc up -d
+  _dc restart cli-proxy-api
+  _wait_ready || true
+  server_status
+}
 server_logs()    { _dc logs -f --tail 50 cli-proxy-api; }
 
 server_status() {
