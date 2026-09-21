@@ -14,6 +14,8 @@ grep -q '"f51-high-proxy"' /tmp/cpa-aliases.yaml || fail "f51-high-proxy missing
 grep -q '"g6a-xhigh-proxy"' /tmp/cpa-aliases.yaml || fail "g6a-xhigh-proxy missing"
 grep -q '"reasoning.effort": "xhigh"' /tmp/cpa-aliases.yaml || fail "codex xhigh override missing"
 grep -q '"output_config.effort": "max"' /tmp/cpa-aliases.yaml || fail "claude max override missing"
+grep -q '"service_tier": "fast"' /tmp/cpa-aliases.yaml || fail "codex fast tier override missing"
+grep -A6 'name: "g6a-max-fast-proxy"' /tmp/cpa-aliases.yaml | grep -q '"reasoning.effort": "max"' || fail "g6a-max-fast-proxy lost effort"
 [ "$(grep -c 'fork: true' /tmp/cpa-aliases.yaml)" = "$n_rows" ] || fail "every alias must fork"
 pass "aliases render ($n_rows aliases)"
 
@@ -28,6 +30,8 @@ printf 'claude\tclaude-fable-5-1\tdup\t-\nclaude\tclaude-fable-5-1\tdup\t-\n' >/
 python3 "$ROOT/lib/render_aliases.py" /tmp/cpa-bad.tsv >/dev/null 2>&1 && fail "duplicate alias not rejected"
 printf 'codex\tgpt-6-astra\tx\tultra\n' >/tmp/cpa-bad.tsv
 python3 "$ROOT/lib/render_aliases.py" /tmp/cpa-bad.tsv >/dev/null 2>&1 && fail "invalid effort not rejected"
+printf 'claude\tclaude-opus-5\tx\thigh\tfast\n' >/tmp/cpa-bad.tsv
+python3 "$ROOT/lib/render_aliases.py" /tmp/cpa-bad.tsv >/dev/null 2>&1 && fail "tier on claude not rejected"
 pass "validation rejects bad rows"
 
 # 4. full flow in a sandbox HOME

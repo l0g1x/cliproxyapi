@@ -82,11 +82,11 @@ Why: Cursor can't set thinking effort per request, so the effort lives in the al
 | Base model | Aliases |
 |---|---|
 | `claude-fable-5-1` | `f51-proxy` (client decides effort) · `f51-low-proxy` · `f51-medium-proxy` · `f51-high-proxy` · `f51-max-proxy` · `claude-fable-5-1[1m]` |
-| `gpt-6-astra` | `g6a-proxy` · `g6a-low-proxy` · `g6a-medium-proxy` · `g6a-high-proxy` · `g6a-xhigh-proxy` · `g6a-max-proxy` |
+| `gpt-6-astra` | `g6a-proxy` · `g6a-low-proxy` · `g6a-medium-proxy` · `g6a-high-proxy` · `g6a-xhigh-proxy` · `g6a-max-proxy` · `g6a-max-fast-proxy` (max effort + `service_tier: fast`) |
 | `claude-opus-5` | `o5-proxy` · `claude-opus-5[1m]` |
 | `claude-sonnet-5` | `s5-proxy` |
 
-Valid effort levels (verified against the upstream APIs): Claude `low | medium | high | max`; Codex `low | medium | high | xhigh | max`.
+Valid effort levels (verified against the upstream APIs): Claude `low | medium | high | max`; Codex `low | medium | high | xhigh | max`. Codex rows take an optional fifth column for `service_tier` (`fast | priority | flex`).
 
 To add or change one: edit `config/aliases.tsv`, then
 
