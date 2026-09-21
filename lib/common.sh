@@ -41,20 +41,13 @@ detect_os() {
 }
 CPA_OS="$(detect_os)"; export CPA_OS
 
-if [ "$CPA_OS" = darwin ]; then
-  if [ -x /opt/homebrew/bin/brew ]; then BREW_PREFIX=/opt/homebrew; else BREW_PREFIX=/usr/local; fi
-  export BREW_PREFIX
-  export CPA_CONFIG_FILE="${CPA_CONFIG_FILE:-$BREW_PREFIX/etc/cliproxyapi.conf}"
-  export CPA_AUTH_DIR="${CPA_AUTH_DIR:-$HOME/.cli-proxy-api}"
-  export CPA_RUNTIME_DIR="$CPA_STATE_DIR"
-  export CPA_COMPOSE_FILE=""
-else
-  export CPA_RUNTIME_DIR="${CPA_RUNTIME_DIR:-$HOME/cliproxyapi}"   # same layout as the reference Linux box
-  export CPA_CONFIG_FILE="${CPA_CONFIG_FILE:-$CPA_RUNTIME_DIR/config.yaml}"
-  export CPA_AUTH_DIR="${CPA_AUTH_DIR:-$CPA_RUNTIME_DIR/auths}"
-  export CPA_COMPOSE_FILE="$CPA_RUNTIME_DIR/docker-compose.yml"
-  export BREW_PREFIX=""
-fi
+# The server always runs in Docker (macOS and Linux alike), with the layout of the
+# reference box:  ~/cliproxyapi/{docker-compose.yml,config.yaml,auths/,logs/,plugins/,ngrok/}
+export CPA_RUNTIME_DIR="${CPA_RUNTIME_DIR:-$HOME/cliproxyapi}"
+export CPA_CONFIG_FILE="${CPA_CONFIG_FILE:-$CPA_RUNTIME_DIR/config.yaml}"
+export CPA_AUTH_DIR="${CPA_AUTH_DIR:-$CPA_RUNTIME_DIR/auths}"
+export CPA_COMPOSE_FILE="$CPA_RUNTIME_DIR/docker-compose.yml"
+export CPA_CONTAINER_AUTH_DIR="/root/.cli-proxy-api"
 
 # Values populated by load_env (declared here so every sourcing file sees them defined).
 CPA_MODE=""; CPA_BASE_URL=""; CPA_API_KEY=""; CPA_ROUTING=""

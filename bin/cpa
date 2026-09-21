@@ -8,7 +8,7 @@ export CPA_HOME
 . "$CPA_HOME/lib/config.sh"
 . "$CPA_HOME/lib/clients.sh"
 . "$CPA_HOME/lib/doctor.sh"
-if [ "$CPA_OS" = darwin ]; then . "$CPA_HOME/lib/server-mac.sh"; else . "$CPA_HOME/lib/server-linux.sh"; fi
+. "$CPA_HOME/lib/server.sh"
 
 usage() {
   cat >&2 <<'EOF'
@@ -29,7 +29,7 @@ cpa — CLIProxyAPI server + client setup
   cpa off [claude|codex|cursor …] route requests directly to Anthropic/OpenAI (alias: proxy-off)
   cpa status                      which way each client is currently routed
 
-  cpa server install|start|stop|restart|status|logs|upgrade|exec …
+  cpa server install|start|stop|restart|status|logs|upgrade|version|exec …
   cpa auth claude|codex           OAuth login (aliases: auth-claude, auth-codex)
   cpa config render|sync-aliases|path|show
   cpa clients [claude|codex|cursor …] [--base-url URL] [--api-key KEY]   same as `on` with overrides
@@ -155,7 +155,7 @@ main() {
     server)
       local sub="${1:-status}"; shift || true
       case "$sub" in
-        install|start|stop|restart|status|logs|upgrade) "server_$sub" "$@" ;;
+        install|start|stop|restart|status|logs|upgrade|version) "server_$sub" "$@" ;;
         exec) server_exec "$@" ;;
         *) die "cpa server install|start|stop|restart|status|logs|upgrade|exec" ;;
       esac ;;
@@ -231,8 +231,7 @@ print("aliases:");       [print("  "+i) for i in ids if i in aliases]
       if grep -qF 'cliproxyapi/shell/aliases.sh' "$rc" 2>/dev/null; then
         backup_file "$rc"; grep -vF 'cliproxyapi/shell/aliases.sh' "$rc" >"$rc.cpa-tmp" && mv "$rc.cpa-tmp" "$rc"; log "removed shell hook from $rc"
       fi
-      info "server left in place. macOS: brew services stop cliproxyapi && brew uninstall cliproxyapi"
-      info "                      Linux: docker compose -f ~/cliproxyapi/docker-compose.yml down" ;;
+      info "server left in place. Remove it with:  docker compose -f ~/cliproxyapi/docker-compose.yml down" ;;
     -h|--help|help|"") usage 0 ;;
     *) warn "unknown command: $cmd"; usage 1 ;;
   esac

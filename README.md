@@ -19,7 +19,7 @@ Install is deliberately hands-off: it sets up the server and shell aliases but *
 
 ## What it does
 
-- **Server** — macOS: `brew install cliproxyapi` + `brew services` (launchd). Linux: Docker Compose (`eceasy/cli-proxy-api`), bound to `127.0.0.1:8317`, with an optional ngrok tunnel.
+- **Server** — Docker Compose (`eceasy/cli-proxy-api`) on macOS and Linux alike, bound to `127.0.0.1:8317`, with an optional ngrok tunnel. Layout: `~/cliproxyapi/{docker-compose.yml,config.yaml,auths/,logs/}`. An existing Homebrew install on macOS is adopted (config + OAuth files copied, brew service stopped).
 - **Config** — renders a minimal `config.yaml` (fill-first routing, session affinity, one generated API key) plus the [aliases](#model-aliases).
 - **Clients** — on `cpa on`, writes the base URL and API key into `~/.claude/settings.json` and `~/.codex/config.toml`, and prints what to paste into Cursor. `cpa off` reverts.
 - **Shell** — installs the `auth-claude`, `auth-codex`, `proxy-on`, `proxy-off`, `cliproxyapi-restart`, … aliases.
@@ -63,8 +63,8 @@ Both accept a client list: `cpa off codex` leaves Claude Code on the proxy. `cpa
 
 | File | Change | Backup |
 |---|---|---|
-| macOS `/opt/homebrew/etc/cliproxyapi.conf`<br>Linux `~/cliproxyapi/config.yaml` | Rendered from `config/config.template.yaml` on first install; afterwards only the `# >>> cpa-managed aliases` region is rewritten | `<file>.bak` |
-| Linux `~/cliproxyapi/docker-compose.yml` | Copied from `config/docker-compose.yml` | `<file>.bak` |
+| `~/cliproxyapi/config.yaml` | Rendered from `config/config.template.yaml` on first install (or adopted from a Homebrew install on macOS); afterwards only the `# >>> cpa-managed aliases` region is rewritten | `<file>.bak` |
+| `~/cliproxyapi/docker-compose.yml` | Copied from `config/docker-compose.yml` | `<file>.bak` |
 | `~/.claude/settings.json` (on `cpa on`) | Sets `env.ANTHROPIC_BASE_URL` and `env.ANTHROPIC_AUTH_TOKEN`; every other key untouched | `<file>.bak` |
 | `~/.codex/config.toml` (on `cpa on`) | Sets top-level `model_provider = "cliproxyapi"` and replaces/appends the `[model_providers.cliproxyapi]` table; your `model`, `model_reasoning_effort`, projects, MCP servers, etc. are untouched | `<file>.bak` |
 | `~/.zshrc` or `~/.bashrc` | Appends one line that sources `shell/aliases.sh` | `<file>.bak` |
@@ -116,7 +116,7 @@ Two known Cursor quirks: it occasionally unticks "Override OpenAI Base URL" on i
 | `cpa on [claude\|codex\|cursor]` | Route through the proxy |
 | `cpa off [claude\|codex\|cursor]` | Route directly to the providers |
 | `cpa status` | Current routing per client |
-| `cpa server start\|stop\|restart\|status\|logs\|upgrade` | Manage the service |
+| `cpa server start\|stop\|restart\|status\|logs\|upgrade\|version` | Manage the container |
 | `cpa auth claude\|codex` | OAuth login |
 | `cpa clients [claude\|codex\|cursor] [--base-url U] [--api-key K]` | (Re)configure clients |
 | `cpa cursor` | Print the Cursor settings |
@@ -139,13 +139,13 @@ Shell aliases (from `shell/aliases.sh`):
 | `cliproxyapi-logs` | `cpa server logs` |
 | `cliproxyapi-status` | `cpa server status` |
 | `cliproxyapi-models` | `cpa models` |
-| `cliproxyapi` (Linux only) | runs the binary inside the container; macOS gets it from brew |
+| `cliproxyapi` | runs the binary inside the container (`cpa server exec`) |
 
 Scripting: `cpa key` and `cpa url` print only the value, so `cpa clients --api-key "$(cpa key add)"` works.
 
 ## Remote access
 
-**ngrok (Linux)** — add to `~/.config/cliproxyapi/env` before running `cpa install` (or `cpa server install`):
+**ngrok** — add to `~/.config/cliproxyapi/env` before running `cpa install` (or `cpa server install`):
 
 ```
 CPA_NGROK_AUTHTOKEN=<token>
@@ -175,8 +175,7 @@ bin/cpa                  CLI entry point (bash)
 lib/common.sh            logging, paths, backup_file / write_if_changed
 lib/config.sh            render config, sync aliases, key add
 lib/render_aliases.py    aliases.tsv → YAML block (validates)
-lib/server-mac.sh        brew + brew services
-lib/server-linux.sh      docker compose
+lib/server.sh            docker compose (+ brew → docker migration on macOS)
 lib/clients.sh           client orchestration + Cursor printout
 lib/client-claude.py     ~/.claude/settings.json writer
 lib/client-codex.py      ~/.codex/config.toml writer
@@ -190,7 +189,7 @@ shell/aliases.sh         sourced from your rc file
 test/smoke.sh            offline tests (bash test/smoke.sh)
 ```
 
-Requirements: `bash`, `python3` (stdlib only), `curl`, `git`; plus Homebrew on macOS or Docker on Linux.
+Requirements: `bash`, `python3` (stdlib only), `curl`, `git`, and Docker (Docker Desktop / OrbStack on macOS, `get.docker.com` on Linux).
 
 ## License
 

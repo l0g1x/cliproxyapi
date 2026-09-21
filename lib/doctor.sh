@@ -11,18 +11,10 @@ _bad() { printf '  %s✘%s %s\n' "$_c_red" "$_c_off" "$*" >&2; _fail=1; }
 _meh() { printf '  %s•%s %s\n' "$_c_ylw" "$_c_off" "$*" >&2; }
 
 _check_server_process() {
-  if [ "$CPA_OS" = darwin ]; then
-    if "$BREW_PREFIX/bin/brew" services list 2>/dev/null | grep -qE '^cliproxyapi[[:space:]]+started'; then
-      _ok "brew service running"
-    else
-      _bad "brew service not running (cpa server start)"
-    fi
+  if docker compose -f "$CPA_COMPOSE_FILE" ps --status running 2>/dev/null | grep -q cli-proxy-api; then
+    _ok "docker container running"
   else
-    if docker compose -f "$CPA_COMPOSE_FILE" ps --status running 2>/dev/null | grep -q cli-proxy-api; then
-      _ok "docker container running"
-    else
-      _bad "container not running (cpa server start)"
-    fi
+    _bad "container not running (cpa server start)"
   fi
 }
 

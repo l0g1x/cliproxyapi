@@ -14,12 +14,11 @@ list_alias_pairs()   { python3 "$CPA_HOME/lib/render_aliases.py" "$CPA_HOME/conf
 
 # config_render <api-key>  — full render from template (fresh install / --force)
 config_render() {
-  local api_key=$1 host auth_dir aliases tmp
-  if [ "$CPA_OS" = darwin ]; then host="127.0.0.1"; auth_dir="$CPA_AUTH_DIR"
-  else host=""; auth_dir="/root/.cli-proxy-api"; fi   # docker: compose binds 127.0.0.1:8317 on the host
+  local api_key=$1 aliases tmp
   aliases="$(render_alias_block)" || die "alias rendering failed"
   tmp="$(mktemp)"
-  python3 - "$CPA_HOME/config/config.template.yaml" "$host" "$auth_dir" "$api_key" "$aliases" >"$tmp" <<'PY'
+  # host "" = bind all interfaces inside the container; compose publishes it on 127.0.0.1 only.
+  python3 - "$CPA_HOME/config/config.template.yaml" "" "$CPA_CONTAINER_AUTH_DIR" "$api_key" "$aliases" >"$tmp" <<'PY'
 import sys
 tpl, host, auth_dir, key, aliases = sys.argv[1:6]
 s = open(tpl, encoding="utf-8").read()

@@ -30,7 +30,7 @@ printf 'codex\tgpt-6-astra\tx\tultra\n' >/tmp/cpa-bad.tsv
 python3 "$ROOT/lib/render_aliases.py" /tmp/cpa-bad.tsv >/dev/null 2>&1 && fail "invalid effort not rejected"
 pass "validation rejects bad rows"
 
-# 4. full flow in a sandbox HOME (macOS brew paths are faked via CPA_* overrides)
+# 4. full flow in a sandbox HOME
 SANDBOX="$(mktemp -d)"
 export HOME="$SANDBOX" CPA_HOME="$ROOT" CPA_STATE_DIR="$SANDBOX/state" CPA_YES=1
 mkdir -p "$HOME/.claude" "$HOME/.codex"
@@ -93,7 +93,7 @@ grep -q '^model_provider = "cliproxyapi"' "$HOME/.codex/config.toml" || fail "co
 python3 -c 'import json,sys; e=json.load(open(sys.argv[1]))["env"]; assert e["ANTHROPIC_AUTH_TOKEN"]=="cpa-key-2"' "$HOME/.claude/settings.json" || fail "claude on didn't restore"
 pass "off/on round trip (claude + codex)"
 
-# 5. config render + key add (force darwin paths into the sandbox)
+# 5. config render + key add
 export CPA_DRY_RUN=0
 CFG="$SANDBOX/cliproxyapi.conf"
 bash -c '
