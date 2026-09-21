@@ -16,6 +16,10 @@ CHANNEL_TIERS = {
     "claude": set(),
     "codex": {"fast", "priority", "flex"},
 }
+# Wire values. Codex CLI's "fast" is a display name; the API field is service_tier: "priority".
+# The proxy only translates fast->priority on /v1/responses, not on /v1/chat/completions (Cursor),
+# so we must emit the wire value ourselves.
+TIER_WIRE = {"fast": "priority"}
 
 
 class Row:
@@ -94,7 +98,7 @@ def render(rows):
                 if r.effort != "-":
                     out.append(f'        "reasoning.effort": {q(r.effort)}')
                 if r.tier != "-":
-                    out.append(f'        "service_tier": {q(r.tier)}')
+                    out.append(f'        "service_tier": {q(TIER_WIRE.get(r.tier, r.tier))}')
     return "\n".join(out)
 
 

@@ -6,7 +6,7 @@
 #   channel : oauth-model-alias channel (claude | codex)
 #   effort  : payload override baked into the alias, or "-" for none (client decides)
 #             claude: low | medium | high | max         codex: low | medium | high | xhigh | max
-#   tier    : optional, codex only — service_tier override (fast | priority | flex)
+#   tier    : optional, codex only — service_tier override (fast | priority | flex); "fast" is emitted as "priority"
 #
 # Cursor can't set thinking effort per request, so the effort lives in the alias name.
 # After editing: `cpa config sync-aliases && cliproxyapi-restart`
