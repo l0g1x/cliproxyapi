@@ -10,6 +10,7 @@ _managed_end='# <<< cpa-managed aliases'
 
 render_alias_block() { python3 "$CPA_HOME/lib/render_aliases.py" "$CPA_HOME/config/aliases.tsv"; }
 list_aliases()       { python3 "$CPA_HOME/lib/render_aliases.py" "$CPA_HOME/config/aliases.tsv" --list; }
+list_alias_pairs()   { python3 "$CPA_HOME/lib/render_aliases.py" "$CPA_HOME/config/aliases.tsv" --pairs; }
 
 # config_render <api-key>  — full render from template (fresh install / --force)
 config_render() {

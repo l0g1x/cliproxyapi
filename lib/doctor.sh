@@ -37,7 +37,7 @@ _check_auth_files() {
 }
 
 _check_api() { # _check_api <base_url> <api_key> <check_aliases:0|1>
-  local base_url=$1 api_key=$2 check_aliases=$3 models count alias missing=0 total
+  local base_url=$1 api_key=$2 check_aliases=$3 models count
   if [ -z "$api_key" ]; then
     _bad "no API key known (env or config)"; return
   fi
@@ -47,13 +47,29 @@ _check_api() { # _check_api <base_url> <api_key> <check_aliases:0|1>
   count="$(printf '%s' "$models" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["data"]))')"
   _ok "$base_url/v1/models → $count models"
   [ "$check_aliases" = 1 ] || return
-  while IFS= read -r alias; do
-    if ! printf '%s' "$models" | python3 -c 'import json,sys; ids={m["id"] for m in json.load(sys.stdin)["data"]}; sys.exit(0 if sys.argv[1] in ids else 1)' "$alias"; then
-      _bad "alias not served: $alias"; missing=1
-    fi
-  done < <(list_aliases)
-  total="$(list_aliases | wc -l | tr -d ' ')"
-  [ "$missing" = 0 ] && _ok "all $total aliases from aliases.tsv are served"
+  # An alias can only be served if its upstream model is (i.e. an account for that
+  # provider is logged in). Missing upstream → hint; upstream present but alias absent → bug.
+  local served=0 skipped=0 broken=0 line upstream alias state
+  while IFS= read -r line; do
+    upstream=${line%%$'\t'*}; alias=${line#*$'\t'}
+    state="$(printf '%s' "$models" | python3 -c '
+import json,sys
+ids={m["id"] for m in json.load(sys.stdin)["data"]}
+u,a=sys.argv[1],sys.argv[2]
+print("served" if a in ids else ("no-upstream" if u not in ids else "broken"))' "$upstream" "$alias")"
+    case "$state" in
+      served)      served=$((served+1)) ;;
+      no-upstream) skipped=$((skipped+1)) ;;
+      broken)      _bad "alias $alias not served although $upstream is — restart the server (cliproxyapi-restart)"; broken=$((broken+1)) ;;
+    esac
+  done < <(list_alias_pairs)
+  local total=$((served+skipped+broken))
+  if [ "$broken" = 0 ]; then
+    _ok "$served/$total aliases served"
+  fi
+  if [ "$skipped" -gt 0 ]; then
+    _meh "$skipped aliases inactive: their upstream model isn't available — log in to that provider (auth-claude / auth-codex)"
+  fi
 }
 
 # Actual routing state read from the client files (not the persisted flag).

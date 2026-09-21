@@ -3,6 +3,7 @@
 
 Usage: render_aliases.py <aliases.tsv>            -> YAML block on stdout
        render_aliases.py <aliases.tsv> --list     -> one alias per line (for doctor/tests)
+       render_aliases.py <aliases.tsv> --pairs    -> "<upstream>\t<alias>" per line
 Stdlib only. Exits 1 on duplicate aliases or bad effort levels.
 """
 import sys
@@ -79,6 +80,8 @@ def main():
     rows = parse(sys.argv[1])
     if "--list" in sys.argv:
         print("\n".join(r[2] for r in rows))
+    elif "--pairs" in sys.argv:
+        print("\n".join(f"{r[1]}\t{r[2]}" for r in rows))
     else:
         print(render(rows))
 
