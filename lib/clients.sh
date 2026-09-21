@@ -65,8 +65,9 @@ for line in open(sys.argv[1]):
 }
 
 client_cursor_on() {
-  local base_url=$1 api_key=$2 models relaunch=1
-  mapfile -t models < <(_cursor_models "$base_url" "$api_key")
+  local base_url=$1 api_key=$2 relaunch=1 m
+  local models=()
+  while IFS= read -r m; do [ -n "$m" ] && models+=("$m"); done < <(_cursor_models "$base_url" "$api_key")   # bash 3.2 has no mapfile
   [ ${#models[@]} -gt 0 ] || { warn "no usable aliases for Cursor (no upstream models served yet)"; return 0; }
   log "Cursor → $base_url/v1  (${#models[@]} models)"
   if [ "${CPA_DRY_RUN:-0}" != 1 ]; then _cursor_quit || relaunch=0; fi
