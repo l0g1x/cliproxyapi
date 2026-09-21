@@ -82,7 +82,8 @@ cmd_install() {
       config_render "$api_key"
     fi
     base_url="http://127.0.0.1:$CPA_PORT"
-    [ "${CPA_DRY_RUN:-0}" = 1 ] || { server_start; sleep 2; }
+    # (re)start so the server picks up a rendered or alias-synced config
+    [ "${CPA_DRY_RUN:-0}" = 1 ] || { server_restart; sleep 2; }
   else
     [ -n "$base_url" ] || die "--client requires --base-url"
     [ -n "$api_key" ]  || die "--client requires --api-key"
@@ -113,11 +114,14 @@ cmd_install() {
   echo >&2
   doctor || true
 
+  local cs xs
+  cs="$(claude_state "$base_url" "$api_key")"; xs="$(codex_state "$base_url" "$api_key")"
   cat >&2 <<EOF
 
 ┌─ Done ───────────────────────────────────────────────────────────────────
 │ Proxy: $base_url
-│ Claude Code and Codex are still talking to their providers directly.
+│ Routing is OFF — nothing about how your tools connect was changed.
+│   Claude Code: $cs    Codex: $xs
 │
 EOF
   if [ "$mode" = server ]; then
