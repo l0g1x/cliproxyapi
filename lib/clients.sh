@@ -68,5 +68,3 @@ clients_route() {
     esac
   done
 }
-
-clients_all() { clients_route on "$@"; }

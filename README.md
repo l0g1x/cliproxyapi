@@ -11,17 +11,18 @@ Then, in a new shell:
 ```sh
 auth-claude      # OAuth into your Claude subscription
 auth-codex       # OAuth into your ChatGPT/Codex subscription
+cpa on           # route Claude Code + Codex through the proxy
 cpa doctor       # everything green?
 ```
 
-That's it. Claude Code and Codex are already configured. Cursor needs one minute of clicking — see [Cursor](#cursor).
+Install is deliberately hands-off: it sets up the server and shell aliases but **does not change how your tools connect** until you run `cpa on`. Cursor needs one minute of clicking — see [Cursor](#cursor).
 
 ## What it does
 
 - **Server** — macOS: `brew install cliproxyapi` + `brew services` (launchd). Linux: Docker Compose (`eceasy/cli-proxy-api`), bound to `127.0.0.1:8317`, with an optional ngrok tunnel.
 - **Config** — renders a minimal `config.yaml` (fill-first routing, session affinity, one generated API key) plus the [aliases](#model-aliases).
-- **Clients** — writes the base URL and API key into `~/.claude/settings.json` and `~/.codex/config.toml`; prints what to paste into Cursor.
-- **Shell** — installs the `auth-claude`, `auth-codex`, `cliproxyapi-restart`, … aliases.
+- **Clients** — on `cpa on`, writes the base URL and API key into `~/.claude/settings.json` and `~/.codex/config.toml`, and prints what to paste into Cursor. `cpa off` reverts.
+- **Shell** — installs the `auth-claude`, `auth-codex`, `proxy-on`, `proxy-off`, `cliproxyapi-restart`, … aliases.
 - **Backups** — every file it touches gets a `.bak` first. Details [below](#what-gets-modified).
 
 ## Install modes
@@ -32,14 +33,15 @@ That's it. Claude Code and Codex are already configured. Cursor needs one minute
 curl -fsSL https://raw.githubusercontent.com/l0g1x/cliproxyapi/main/install.sh | bash
 ```
 
-**Client only** — no server; point this machine's clients at a proxy running elsewhere (a home server behind ngrok, a VPS over an SSH tunnel, …):
+**Client only** — no server; record the address of a proxy running elsewhere (a home server behind ngrok, a VPS over an SSH tunnel, …), then `cpa on`:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/l0g1x/cliproxyapi/main/install.sh | bash -s -- \
   --client --base-url https://proxy.example.com --api-key <key from the server>
+cpa on
 ```
 
-Options: `--clients claude,codex` to skip some, `--dry-run` to preview every change without writing, `--yes` to skip prompts, `--force-config` to re-render the server config from the template.
+Options: `--on` to route immediately instead of waiting for `cpa on` (with `--clients claude,codex` to pick a subset), `--dry-run` to preview every change without writing, `--yes` to skip prompts, `--force-config` to re-render the server config from the template.
 
 Re-running the installer is safe: it updates the repo, keeps your config, re-syncs aliases, and rewrites client files only if their content would actually change.
 
@@ -63,8 +65,8 @@ Both accept a client list: `cpa off codex` leaves Claude Code on the proxy. `cpa
 |---|---|---|
 | macOS `/opt/homebrew/etc/cliproxyapi.conf`<br>Linux `~/cliproxyapi/config.yaml` | Rendered from `config/config.template.yaml` on first install; afterwards only the `# >>> cpa-managed aliases` region is rewritten | `<file>.bak` |
 | Linux `~/cliproxyapi/docker-compose.yml` | Copied from `config/docker-compose.yml` | `<file>.bak` |
-| `~/.claude/settings.json` | Sets `env.ANTHROPIC_BASE_URL` and `env.ANTHROPIC_AUTH_TOKEN`; every other key untouched | `<file>.bak` |
-| `~/.codex/config.toml` | Sets top-level `model_provider = "cliproxyapi"` and replaces/appends the `[model_providers.cliproxyapi]` table; your `model`, `model_reasoning_effort`, projects, MCP servers, etc. are untouched | `<file>.bak` |
+| `~/.claude/settings.json` (on `cpa on`) | Sets `env.ANTHROPIC_BASE_URL` and `env.ANTHROPIC_AUTH_TOKEN`; every other key untouched | `<file>.bak` |
+| `~/.codex/config.toml` (on `cpa on`) | Sets top-level `model_provider = "cliproxyapi"` and replaces/appends the `[model_providers.cliproxyapi]` table; your `model`, `model_reasoning_effort`, projects, MCP servers, etc. are untouched | `<file>.bak` |
 | `~/.zshrc` or `~/.bashrc` | Appends one line that sources `shell/aliases.sh` | `<file>.bak` |
 | `~/.config/cliproxyapi/env` | New file: mode, base URL, API key (`0600`) | — |
 

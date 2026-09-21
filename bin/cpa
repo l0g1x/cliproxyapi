@@ -14,11 +14,13 @@ usage() {
   cat >&2 <<'EOF'
 cpa — CLIProxyAPI server + client setup
 
-  cpa install [options]           one-shot: server → config → clients → shell aliases → doctor
-      --client                    no server; just point clients at --base-url/--api-key
+  cpa install [options]           one-shot: server → config → shell aliases → doctor
+                                  (routing starts OFF; run `cpa on` afterwards)
+      --client                    no server; just record --base-url/--api-key for `cpa on`
       --base-url URL              (client mode) proxy URL, e.g. https://proxy.example.com
       --api-key KEY               (client mode) proxy bearer token
-      --clients LIST              comma list of claude,codex,cursor   (default: all)
+      --on                        also run `cpa on` at the end (scripted installs)
+      --clients LIST              with --on: comma list of claude,codex,cursor
       --force-config              re-render the server config from the template
       --dry-run                   show what would change, write nothing
       --yes                       no prompts
@@ -46,13 +48,14 @@ EOF
 
 # ---------------------------------------------------------------- install
 cmd_install() {
-  local mode=server base_url="" api_key="" clients="" force=0
+  local mode=server base_url="" api_key="" clients="" force=0 route_on=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --client)        mode=client ;;
       --base-url)      base_url=$2; shift ;;
       --api-key)       api_key=$2; shift ;;
-      --clients)       clients=$2; shift ;;
+      --on)            route_on=1 ;;
+      --clients)       clients=$2; shift; route_on=1 ;;
       --force-config)  force=1 ;;
       --dry-run)       export CPA_DRY_RUN=1 ;;
       --yes|-y)        export CPA_YES=1 ;;
@@ -87,14 +90,18 @@ cmd_install() {
     log "client-only install → $base_url"
   fi
 
-  save_env "$mode" "$base_url" "$api_key"
-
-  if [ -n "$clients" ]; then
-    local list
-    IFS=, read -r -a list <<<"$clients"
-    clients_all "$base_url" "$api_key" "${list[@]}"
-  else
-    clients_all "$base_url" "$api_key"
+  # Install never touches the client configs. Routing starts OFF; `cpa on` opts in.
+  # (Exception: --on, for scripted installs that want it immediately.)
+  save_env "$mode" "$base_url" "$api_key" off
+  if [ "$route_on" = 1 ]; then
+    if [ -n "$clients" ]; then
+      local list
+      IFS=, read -r -a list <<<"$clients"
+      clients_route on "$base_url" "$api_key" "${list[@]}"
+    else
+      clients_route on "$base_url" "$api_key"
+      [ "${CPA_DRY_RUN:-0}" = 1 ] || set_routing on
+    fi
   fi
 
   # The rc file must contain a literal $HOME so it expands at shell startup, not now.
@@ -105,12 +112,35 @@ cmd_install() {
   [ "${CPA_DRY_RUN:-0}" = 1 ] && { log "dry run complete"; return 0; }
   echo >&2
   doctor || true
-  echo >&2
+
+  cat >&2 <<EOF
+
+┌─ Done ───────────────────────────────────────────────────────────────────
+│ Proxy: $base_url
+│ Claude Code and Codex are still talking to their providers directly.
+│
+EOF
   if [ "$mode" = server ]; then
-    log "next: open a new shell, then run  auth-claude  and/or  auth-codex"
+    cat >&2 <<'EOF'
+│ 1. Open a new shell (or:  source ~/.cliproxyapi/shell/aliases.sh)
+│ 2. Log in to the accounts the proxy should use:
+│        auth-claude
+│        auth-codex
+│ 3. Route your tools through the proxy:
+│        cpa on
+│
+│ Back to direct any time:  cpa off      Check:  cpa status
+EOF
   else
-    log "next: open a new shell (aliases) — clients are pointed at $base_url"
+    cat >&2 <<'EOF'
+│ 1. Open a new shell (or:  source ~/.cliproxyapi/shell/aliases.sh)
+│ 2. Route your tools through the proxy:
+│        cpa on
+│
+│ Back to direct any time:  cpa off      Check:  cpa status
+EOF
   fi
+  printf '└──────────────────────────────────────────────────────────────────────────\n' >&2
 }
 
 # ---------------------------------------------------------------- dispatch
