@@ -6,6 +6,9 @@ case ":$PATH:" in *":$HOME/.cliproxyapi/bin:"*) ;; *) export PATH="$HOME/.clipro
 
 alias auth-claude='cpa auth claude'
 alias auth-codex='cpa auth codex'
+alias proxy-on='cpa on'          # route Claude Code / Codex through the proxy
+alias proxy-off='cpa off'        # route them directly to Anthropic / OpenAI
+alias proxy-status='cpa status'
 alias cliproxyapi-restart='cpa server restart'
 alias cliproxyapi-logs='cpa server logs'
 alias cliproxyapi-status='cpa server status'

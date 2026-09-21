@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Client configuration: Claude Code, Codex, Cursor (print-only).
+# Client routing: point Claude Code / Codex / Cursor at the proxy (on) or back at
+# their providers directly (off).
 
 # Requires lib/common.sh to be sourced first.
 # shellcheck source=lib/common.sh
@@ -11,12 +12,13 @@ _py() {
   PYTHONPATH="$CPA_HOME/lib" python3 "$CPA_HOME/lib/${args[0]}" "${args[@]:1}"
 }
 
-client_claude() { log "Claude Code → $1";  _py client-claude.py "$1" "$2"; }
-client_codex()  { log "Codex → $1/v1";     _py client-codex.py  "$1" "$2"; }
+# ---------- on ----------
+client_claude_on() { log "Claude Code → $1";  _py client-claude.py on "$1" "$2"; }
+client_codex_on()  { log "Codex → $1/v1";     _py client-codex.py  on "$1" "$2"; }
 
 # Cursor keeps the base URL and model list in an opaque SQLite blob and the API key in
 # encrypted safeStorage, so it is configured by hand. This prints exactly what to enter.
-client_cursor() {
+client_cursor_on() {
   local base_url=$1 api_key=$2
   cat >&2 <<EOF
 
@@ -38,15 +40,33 @@ EOF
 EOF
 }
 
-clients_all() { # clients_all <base-url> <api-key> [which...]
-  local base_url=$1 api_key=$2; shift 2
-  local which=("$@"); [ ${#which[@]} -eq 0 ] && which=(claude codex cursor)
+# ---------- off ----------
+client_claude_off() { log "Claude Code → direct (Anthropic login)"; _py client-claude.py off; }
+client_codex_off()  { log "Codex → direct (ChatGPT login)";         _py client-codex.py  off; }
+client_cursor_off() {
+  cat >&2 <<'EOF'
+
+┌─ Cursor (manual) ────────────────────────────────────────────────────────
+│ Cursor Settings → Models → ☐ untick "Override OpenAI Base URL".
+│ The key and custom model names can stay; they're inert while the override is off.
+│ Cursor's own models go through Cursor again.
+└──────────────────────────────────────────────────────────────────────────
+EOF
+}
+
+# ---------- dispatch ----------
+# clients_route on|off <base-url> <api-key> [claude|codex|cursor ...]
+clients_route() {
+  local action=$1 base_url=$2 api_key=$3; shift 3
+  local which=("$@")
+  [ ${#which[@]} -eq 0 ] && which=(claude codex cursor)
+  local c
   for c in "${which[@]}"; do
     case "$c" in
-      claude) client_claude "$base_url" "$api_key" ;;
-      codex)  client_codex  "$base_url" "$api_key" ;;
-      cursor) client_cursor "$base_url" "$api_key" ;;
+      claude|codex|cursor) "client_${c}_${action}" "$base_url" "$api_key" ;;
       *) die "unknown client: $c (claude|codex|cursor)" ;;
     esac
   done
 }
+
+clients_all() { clients_route on "$@"; }

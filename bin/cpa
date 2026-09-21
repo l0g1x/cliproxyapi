@@ -23,10 +23,14 @@ cpa — CLIProxyAPI server + client setup
       --dry-run                   show what would change, write nothing
       --yes                       no prompts
 
+  cpa on  [claude|codex|cursor …] route requests through the proxy   (alias: proxy-on)
+  cpa off [claude|codex|cursor …] route requests directly to Anthropic/OpenAI (alias: proxy-off)
+  cpa status                      which way each client is currently routed
+
   cpa server install|start|stop|restart|status|logs|upgrade|exec …
   cpa auth claude|codex           OAuth login (aliases: auth-claude, auth-codex)
   cpa config render|sync-aliases|path|show
-  cpa clients [claude|codex|cursor …] [--base-url URL] [--api-key KEY]
+  cpa clients [claude|codex|cursor …] [--base-url URL] [--api-key KEY]   same as `on` with overrides
   cpa cursor                      print the Cursor Settings → Models values
   cpa key                         print the primary API key
   cpa key add                     generate + register a new API key; prints only the key
@@ -131,7 +135,7 @@ main() {
         show)         config_show ;;
         *) die "cpa config render|sync-aliases|path|show" ;;
       esac ;;
-    clients)
+    on|clients)
       load_env
       local base_url="${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" api_key="${CPA_API_KEY:-}" which=()
       while [ $# -gt 0 ]; do
@@ -144,10 +148,26 @@ main() {
       done
       [ -n "$api_key" ] || api_key="$(config_primary_key || true)"
       [ -n "$api_key" ] || die "no API key known; pass --api-key"
-      clients_all "${base_url%/}" "$api_key" "${which[@]:+${which[@]}}" ;;
+      clients_route on "${base_url%/}" "$api_key" "${which[@]:+${which[@]}}"
+      # only flip the persisted flag when every client was switched
+      [ ${#which[@]} -eq 0 ] && [ "${CPA_DRY_RUN:-0}" != 1 ] && set_routing on
+      true ;;
+    off)
+      load_env
+      local which=()
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --dry-run) export CPA_DRY_RUN=1 ;;
+          *) which+=("$1") ;;
+        esac; shift
+      done
+      clients_route off "" "" "${which[@]:+${which[@]}}"
+      [ ${#which[@]} -eq 0 ] && [ "${CPA_DRY_RUN:-0}" != 1 ] && set_routing off
+      true ;;
+    status)    routing_status ;;
     cursor)
       load_env
-      client_cursor "${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" "${CPA_API_KEY:-$(config_primary_key || die 'no key')}" ;;
+      client_cursor_on "${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" "${CPA_API_KEY:-$(config_primary_key || die 'no key')}" ;;
     key)
       case "${1:-}" in
         add) key_add ;;

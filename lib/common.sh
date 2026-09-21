@@ -57,8 +57,8 @@ else
 fi
 
 # Values populated by load_env (declared here so every sourcing file sees them defined).
-CPA_MODE=""; CPA_BASE_URL=""; CPA_API_KEY=""
-export CPA_MODE CPA_BASE_URL CPA_API_KEY
+CPA_MODE=""; CPA_BASE_URL=""; CPA_API_KEY=""; CPA_ROUTING=""
+export CPA_MODE CPA_BASE_URL CPA_API_KEY CPA_ROUTING
 
 # ---------- env (mode / base url / key) ----------
 # Stored as plain KEY=VALUE lines (no quoting/escaping) and read explicitly rather than sourced,
@@ -71,15 +71,20 @@ load_env() {
       CPA_MODE)     CPA_MODE=$value ;;
       CPA_BASE_URL) CPA_BASE_URL=$value ;;
       CPA_API_KEY)  CPA_API_KEY=$value ;;
+      CPA_ROUTING)  CPA_ROUTING=$value ;;
     esac
   done <"$CPA_ENV_FILE"
 }
-save_env() { # save_env MODE BASE_URL API_KEY
+save_env() { # save_env MODE BASE_URL API_KEY [ROUTING=on]
   mkdir -p "$CPA_STATE_DIR"
   local tmp; tmp="$(mktemp)"
-  printf 'CPA_MODE=%s\nCPA_BASE_URL=%s\nCPA_API_KEY=%s\n' "$1" "$2" "$3" >"$tmp"
+  printf 'CPA_MODE=%s\nCPA_BASE_URL=%s\nCPA_API_KEY=%s\nCPA_ROUTING=%s\n' "$1" "$2" "$3" "${4:-on}" >"$tmp"
   write_if_changed "$CPA_ENV_FILE" "$tmp"
   rm -f "$tmp"
+}
+set_routing() { # set_routing on|off — persists the flag, keeps the other values
+  load_env
+  save_env "${CPA_MODE:-server}" "${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" "${CPA_API_KEY:-}" "$1"
 }
 
 # ---------- backups ----------

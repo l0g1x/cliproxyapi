@@ -56,28 +56,60 @@ _check_api() { # _check_api <base_url> <api_key> <check_aliases:0|1>
   [ "$missing" = 0 ] && _ok "all $total aliases from aliases.tsv are served"
 }
 
-_check_claude() { # _check_claude <base_url> <api_key>
+# Actual routing state read from the client files (not the persisted flag).
+# Prints one of: proxy | direct | mismatch | missing
+claude_state() { # claude_state <base_url> <api_key>
   local f="$HOME/.claude/settings.json"
-  if [ ! -f "$f" ]; then _meh "Claude Code not configured ($f missing)"; return; fi
-  if python3 - "$f" "$1" "$2" <<'PY'
+  [ -f "$f" ] || { echo missing; return; }
+  python3 - "$f" "$1" "$2" <<'PY'
 import json, sys
 env = json.load(open(sys.argv[1])).get("env", {})
-ok = env.get("ANTHROPIC_BASE_URL", "").rstrip("/") == sys.argv[2].rstrip("/") and env.get("ANTHROPIC_AUTH_TOKEN") == sys.argv[3]
-sys.exit(0 if ok else 1)
+url, tok = env.get("ANTHROPIC_BASE_URL"), env.get("ANTHROPIC_AUTH_TOKEN")
+if not url and not tok:
+    print("direct")
+elif (url or "").rstrip("/") == sys.argv[2].rstrip("/") and tok == sys.argv[3]:
+    print("proxy")
+else:
+    print("mismatch")
 PY
-  then _ok "Claude Code → $1"; else _bad "Claude Code settings don't match ($f)"; fi
 }
 
-_check_codex() { # _check_codex <base_url> <api_key>
+codex_state() { # codex_state <base_url> <api_key>
   local f="$HOME/.codex/config.toml"
-  if [ ! -f "$f" ]; then _meh "Codex not configured ($f missing)"; return; fi
-  if grep -qE '^model_provider[[:space:]]*=[[:space:]]*"cliproxyapi"' "$f" \
-     && grep -qF "base_url = \"$1/v1\"" "$f" \
-     && grep -qF "experimental_bearer_token = \"$2\"" "$f"; then
-    _ok "Codex → $1/v1"
+  [ -f "$f" ] || { echo missing; return; }
+  if ! grep -qE '^model_provider[[:space:]]*=' "$f"; then
+    echo direct
+  elif grep -qE '^model_provider[[:space:]]*=[[:space:]]*"cliproxyapi"' "$f" \
+       && grep -qF "base_url = \"$1/v1\"" "$f" \
+       && grep -qF "experimental_bearer_token = \"$2\"" "$f"; then
+    echo proxy
   else
-    _bad "Codex config doesn't match ($f)"
+    echo mismatch
   fi
+}
+
+_report_client() { # _report_client <name> <state> <expected:on|off> <target>
+  local name=$1 state=$2 expected=$3 target=$4
+  case "$state" in
+    missing)  _meh "$name not configured" ;;
+    proxy)    if [ "$expected" = on ]; then _ok "$name → $target"; else _bad "$name still routed through the proxy (cpa off)"; fi ;;
+    direct)   if [ "$expected" = off ]; then _ok "$name → direct"; else _bad "$name is routed direct (cpa on)"; fi ;;
+    mismatch) _bad "$name points somewhere else — run cpa on to fix" ;;
+  esac
+}
+
+_check_claude() { _report_client "Claude Code" "$(claude_state "$1" "$2")" "$3" "$1"; }
+_check_codex()  { _report_client "Codex"       "$(codex_state  "$1" "$2")" "$3" "$1/v1"; }
+
+routing_status() {
+  local base_url api_key
+  load_env
+  base_url="${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}"
+  api_key="${CPA_API_KEY:-$(config_primary_key 2>/dev/null || true)}"
+  log "routing: ${CPA_ROUTING:-on}  (proxy: $base_url)"
+  printf '  %-12s %s\n' "Claude Code" "$(claude_state "$base_url" "$api_key")" >&2
+  printf '  %-12s %s\n' "Codex"       "$(codex_state  "$base_url" "$api_key")" >&2
+  printf '  %-12s %s\n' "Cursor"      "manual — check Settings → Models → Override OpenAI Base URL" >&2
 }
 
 _check_shell() {
@@ -93,14 +125,15 @@ _check_shell() {
 }
 
 doctor() {
-  local base_url api_key mode
+  local base_url api_key mode routing
   _fail=0
   load_env
   mode="${CPA_MODE:-server}"
+  routing="${CPA_ROUTING:-on}"
   base_url="${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}"
   api_key="${CPA_API_KEY:-$(config_primary_key 2>/dev/null || true)}"
 
-  log "cpa doctor  (mode: $mode, os: $CPA_OS)"
+  log "cpa doctor  (mode: $mode, routing: $routing, os: $CPA_OS)"
 
   if [ "$mode" = server ]; then
     if [ -f "$CPA_CONFIG_FILE" ]; then _ok "config: $CPA_CONFIG_FILE"; else _bad "config missing: $CPA_CONFIG_FILE"; fi
@@ -111,8 +144,8 @@ doctor() {
     _check_api "$base_url" "$api_key" 0
   fi
 
-  _check_claude "$base_url" "$api_key"
-  _check_codex  "$base_url" "$api_key"
+  _check_claude "$base_url" "$api_key" "$routing"
+  _check_codex  "$base_url" "$api_key" "$routing"
   _check_shell
 
   if [ "$_fail" = 0 ]; then

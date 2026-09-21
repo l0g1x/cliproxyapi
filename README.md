@@ -43,6 +43,20 @@ Options: `--clients claude,codex` to skip some, `--dry-run` to preview every cha
 
 Re-running the installer is safe: it updates the repo, keeps your config, re-syncs aliases, and rewrites client files only if their content would actually change.
 
+## Turning the proxy off and on
+
+Sometimes you want requests to go straight to Anthropic / OpenAI again — the proxy is down, you're debugging, or you want your subscription's native behavior. Two commands, no reinstall:
+
+```sh
+proxy-off        # cpa off  — Claude Code and Codex talk to their providers directly
+proxy-on         # cpa on   — back through the proxy, same URL and key as before
+proxy-status     # cpa status — what each client is actually doing right now
+```
+
+What `off` does: Claude Code loses `ANTHROPIC_BASE_URL` / `ANTHROPIC_AUTH_TOKEN` and falls back to its own login; Codex loses the `model_provider = "cliproxyapi"` line and falls back to ChatGPT auth (the `[model_providers.cliproxyapi]` table stays behind, inert, so `on` is instant). Cursor gets a one-line instruction to untick the override. Everything else in those files — your model choice, effort level, permissions, MCP servers — is untouched, and the usual `.bak` policy applies.
+
+Both accept a client list: `cpa off codex` leaves Claude Code on the proxy. `cpa status` reads the real files, so it tells the truth even if you edited them by hand.
+
 ## What gets modified
 
 | File | Change | Backup |
@@ -97,6 +111,9 @@ Two known Cursor quirks: it occasionally unticks "Override OpenAI Base URL" on i
 | Command | |
 |---|---|
 | `cpa install [opts]` | Full install (see above) |
+| `cpa on [claude\|codex\|cursor]` | Route through the proxy |
+| `cpa off [claude\|codex\|cursor]` | Route directly to the providers |
+| `cpa status` | Current routing per client |
 | `cpa server start\|stop\|restart\|status\|logs\|upgrade` | Manage the service |
 | `cpa auth claude\|codex` | OAuth login |
 | `cpa clients [claude\|codex\|cursor] [--base-url U] [--api-key K]` | (Re)configure clients |
@@ -115,6 +132,7 @@ Shell aliases (from `shell/aliases.sh`):
 |---|---|
 | `auth-claude` | `cpa auth claude` |
 | `auth-codex` | `cpa auth codex` |
+| `proxy-on` / `proxy-off` / `proxy-status` | `cpa on` / `cpa off` / `cpa status` |
 | `cliproxyapi-restart` | `cpa server restart` |
 | `cliproxyapi-logs` | `cpa server logs` |
 | `cliproxyapi-status` | `cpa server status` |

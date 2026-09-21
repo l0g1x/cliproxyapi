@@ -1,22 +1,39 @@
 #!/usr/bin/env python3
-"""Point Codex CLI/app at the proxy by editing ~/.codex/config.toml line-by-line
-(no TOML library, so comments and formatting elsewhere survive):
+"""Route Codex CLI/app through the proxy, or back to OpenAI directly, by editing
+~/.codex/config.toml line-by-line (no TOML library, so comments and formatting
+elsewhere survive). `model` and `model_reasoning_effort` are yours — untouched.
 
-  1. top-level  model_provider = "cliproxyapi"   (replaced in place, or inserted at the top)
-  2. section    [model_providers.cliproxyapi]     (replaced wholesale, or appended)
-
-`model` and `model_reasoning_effort` are yours — untouched.
-
-Usage: client-codex.py <base-url> <api-key> [--dry-run]
+  client-codex.py on <base-url> <api-key> [--dry-run]
+      1. top-level  model_provider = "cliproxyapi"   (replaced in place, or inserted at the top)
+      2. section    [model_providers.cliproxyapi]     (replaced wholesale, or appended)
+  client-codex.py off [--dry-run]
+      removes the top-level model_provider line. The provider table is left in place
+      (inert without model_provider), so `on` is cheap and your key isn't lost.
 """
 import os
 import re
 import sys
 
-from cpa_backup import write_if_changed
+from cpa_backup import info, write_if_changed
 
 CONFIG = os.path.expanduser("~/.codex/config.toml")
 HEADER = "[model_providers.cliproxyapi]"
+IS_HEADER = re.compile(r"^\s*\[")
+MODEL_PROVIDER = re.compile(r"^\s*model_provider\s*=")
+
+
+def load():
+    if not os.path.exists(CONFIG):
+        return []
+    with open(CONFIG, encoding="utf-8") as fh:
+        return fh.read().split("\n")
+
+
+def save(lines, dry):
+    content = "\n".join(lines)
+    if not content.endswith("\n"):
+        content += "\n"
+    write_if_changed(CONFIG, content, dry_run=dry)
 
 
 def provider_block(base_url, api_key):
@@ -30,30 +47,19 @@ def provider_block(base_url, api_key):
     ]
 
 
-def main():
-    if len(sys.argv) < 3:
-        sys.exit(__doc__)
-    base_url, api_key = sys.argv[1].rstrip("/"), sys.argv[2]
-    dry = "--dry-run" in sys.argv
+def top_level_end(lines):
+    return next((i for i, l in enumerate(lines) if IS_HEADER.match(l)), len(lines))
 
-    lines = []
-    if os.path.exists(CONFIG):
-        with open(CONFIG, encoding="utf-8") as fh:
-            lines = fh.read().split("\n")
 
-    is_header = re.compile(r"^\s*\[")
-    first_header = next((i for i, l in enumerate(lines) if is_header.match(l)), len(lines))
-
-    # 1. model_provider in the top-level (pre-header) region
-    mp = re.compile(r"^\s*model_provider\s*=")
-    idx = next((i for i in range(first_header) if mp.match(lines[i])), None)
+def on(base_url, api_key, dry):
+    lines = load()
+    end = top_level_end(lines)
+    idx = next((i for i in range(end) if MODEL_PROVIDER.match(lines[i])), None)
     if idx is None:
         lines.insert(0, 'model_provider = "cliproxyapi"')
-        first_header += 1
     else:
         lines[idx] = 'model_provider = "cliproxyapi"'
 
-    # 2. provider section
     start = next((i for i, l in enumerate(lines) if l.strip() == HEADER), None)
     block = provider_block(base_url, api_key)
     if start is None:
@@ -61,14 +67,31 @@ def main():
             lines.pop()
         lines += ["", *block, ""]
     else:
-        end = next((i for i in range(start + 1, len(lines)) if is_header.match(lines[i])), len(lines))
-        # keep a trailing blank line inside the region so the next section stays separated
-        lines[start:end] = block + [""]
+        stop = next((i for i in range(start + 1, len(lines)) if IS_HEADER.match(lines[i])), len(lines))
+        lines[start:stop] = block + [""]
+    save(lines, dry)
 
-    content = "\n".join(lines)
-    if not content.endswith("\n"):
-        content += "\n"
-    write_if_changed(CONFIG, content, dry_run=dry)
+
+def off(dry):
+    lines = load()
+    end = top_level_end(lines)
+    idx = next((i for i in range(end) if MODEL_PROVIDER.match(lines[i])), None)
+    if idx is None:
+        info(f"Codex already direct: {CONFIG}")
+        return
+    del lines[idx]
+    save(lines, dry)
+
+
+def main():
+    args = [a for a in sys.argv[1:] if a != "--dry-run"]
+    dry = "--dry-run" in sys.argv
+    if args[:1] == ["on"] and len(args) == 3:
+        on(args[1].rstrip("/"), args[2], dry)
+    elif args == ["off"]:
+        off(dry)
+    else:
+        sys.exit(__doc__)
 
 
 if __name__ == "__main__":

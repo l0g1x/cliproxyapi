@@ -45,7 +45,7 @@ model_reasoning_effort = "max"
 trust_level = "trusted"
 EOF
 
-PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-claude.py" https://new.example cpa-test-key 2>/dev/null
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-claude.py" on https://new.example cpa-test-key 2>/dev/null
 python3 - "$HOME/.claude/settings.json" <<'PY' || fail "claude settings wrong"
 import json,sys; d=json.load(open(sys.argv[1]))
 assert d["env"]["ANTHROPIC_BASE_URL"]=="https://new.example" and d["env"]["ANTHROPIC_AUTH_TOKEN"]=="cpa-test-key"
@@ -55,21 +55,43 @@ PY
 grep -q '"old"' "$HOME/.claude/settings.json.bak" || fail "claude .bak is not the original"
 pass "claude writer (+ .bak)"
 
-PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-codex.py" https://new.example cpa-test-key 2>/dev/null
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-codex.py" on https://new.example cpa-test-key 2>/dev/null
 grep -q '^model_provider = "cliproxyapi"' "$HOME/.codex/config.toml" || fail "codex model_provider missing"
 grep -q '^model_reasoning_effort = "max"' "$HOME/.codex/config.toml" || fail "codex reasoning effort clobbered"
 grep -q '^base_url = "https://new.example/v1"' "$HOME/.codex/config.toml" || fail "codex base_url wrong"
 grep -q '^\[projects."/tmp"\]' "$HOME/.codex/config.toml" || fail "codex projects section lost"
 [ -f "$HOME/.codex/config.toml.bak" ] || fail "codex .bak not created"
 # second run: unchanged → no new backup
-PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-codex.py" https://new.example cpa-test-key 2>/dev/null
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-codex.py" on https://new.example cpa-test-key 2>/dev/null
 [ "$(find "$HOME/.codex" -name 'config.toml.bak*' | wc -l | tr -d ' ')" = 1 ] || fail "unchanged rewrite created extra backup"
 # third run with new key: replaces block, timestamped backup
-PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-codex.py" https://new.example cpa-key-2 2>/dev/null
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-codex.py" on https://new.example cpa-key-2 2>/dev/null
 [ "$(grep -c 'experimental_bearer_token' "$HOME/.codex/config.toml")" = 1 ] || fail "codex provider block duplicated"
 [ "$(find "$HOME/.codex" -name 'config.toml.bak*' | wc -l | tr -d ' ')" = 2 ] || fail "timestamped backup missing"
 grep -q '"old"' "$HOME/.claude/settings.json.bak" || fail "pristine .bak was overwritten"
 pass "codex writer (+ idempotent, + timestamped .bak)"
+
+# 4b. off → direct, on → proxy again (round trip)
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-claude.py" off 2>/dev/null
+python3 - "$HOME/.claude/settings.json" <<'PY2' || fail "claude off left proxy keys"
+import json,sys; d=json.load(open(sys.argv[1])); env=d.get("env",{})
+assert "ANTHROPIC_BASE_URL" not in env and "ANTHROPIC_AUTH_TOKEN" not in env
+assert d["model"]=="keep-me"
+PY2
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-codex.py" off 2>/dev/null
+grep -q '^model_provider' "$HOME/.codex/config.toml" && fail "codex off left model_provider"
+grep -q '^\[model_providers.cliproxyapi\]' "$HOME/.codex/config.toml" || fail "codex off should keep provider table"
+grep -q '^model = "gpt-6-astra"' "$HOME/.codex/config.toml" || fail "codex off clobbered model"
+# off twice is a no-op (no extra backup)
+n_before=$(find "$HOME/.codex" -name 'config.toml.bak*' | wc -l | tr -d ' ')
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-codex.py" off 2>/dev/null
+[ "$(find "$HOME/.codex" -name 'config.toml.bak*' | wc -l | tr -d ' ')" = "$n_before" ] || fail "second off created a backup"
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-claude.py" on https://new.example cpa-key-2 2>/dev/null
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-codex.py"  on https://new.example cpa-key-2 2>/dev/null
+grep -q '^model_provider = "cliproxyapi"' "$HOME/.codex/config.toml" || fail "codex on didn't restore model_provider"
+[ "$(grep -c 'experimental_bearer_token' "$HOME/.codex/config.toml")" = 1 ] || fail "codex on duplicated provider block"
+python3 -c 'import json,sys; e=json.load(open(sys.argv[1]))["env"]; assert e["ANTHROPIC_AUTH_TOKEN"]=="cpa-key-2"' "$HOME/.claude/settings.json" || fail "claude on didn't restore"
+pass "off/on round trip (claude + codex)"
 
 # 5. config render + key add (force darwin paths into the sandbox)
 export CPA_DRY_RUN=0
