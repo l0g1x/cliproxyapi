@@ -69,7 +69,7 @@ Both accept a client list: `cpa off codex` leaves Claude Code on the proxy. `cpa
 | `~/.codex/config.toml` (on `cpa on`) | Sets top-level `model_provider = "cliproxyapi"` and replaces/appends the `[model_providers.cliproxyapi]` table; your `model`, `model_reasoning_effort`, projects, MCP servers, etc. are untouched | `<file>.bak` |
 | Cursor `state.vscdb` (on `cpa on cursor`) | Sets `openAIBaseUrl`, `useOpenAIKey`, adds aliases to the model list | affected row → `state.vscdb.applicationUser.bak` |
 | `~/.zshrc` or `~/.bashrc` | Appends one line that sources `shell/aliases.sh` | `<file>.bak` |
-| `~/.config/cliproxyapi/env` | New file: mode, base URL, API key (`0600`) | — |
+| `~/.config/cliproxyapi/env` | New file: mode, base URL, API key, ngrok settings (`0600`) | — |
 
 Backup policy: the **first** time a file is modified it gets `<file>.bak` — a pristine copy that is never overwritten. Later modifications get `<file>.bak.<timestamp>`. If the new content is byte-identical, nothing is written and no backup is made. `cpa uninstall` restores the client files from `.bak`.
 
@@ -150,14 +150,15 @@ Scripting: `cpa key` and `cpa url` print only the value, so `cpa clients --api-k
 
 ## Remote access
 
-**ngrok** — add to `~/.config/cliproxyapi/env` before running `cpa install` (or `cpa server install`):
+**ngrok** — pass it at install time (it's remembered in `~/.config/cliproxyapi/env`):
 
-```
-CPA_NGROK_AUTHTOKEN=<token>
-CPA_NGROK_DOMAIN=yourname.ngrok.dev
+```sh
+cpa install --ngrok-domain yourname.ngrok.dev --ngrok-authtoken <token>
 ```
 
-This renders `~/cliproxyapi/ngrok/ngrok.yml` and enables the `ngrok` compose profile. Other machines then use client mode with `--base-url https://yourname.ngrok.dev`.
+This renders `~/cliproxyapi/ngrok/ngrok.yml`, enables the `ngrok` compose profile, and makes `https://yourname.ngrok.dev` the base URL that `cpa on` gives to clients. The proxy still requires the API key, so the public URL isn't public access.
+
+**Cursor needs this.** Cursor's base-URL verification runs from Cursor's own servers, so `http://127.0.0.1:8317` is rejected ("access to private network is forbidden"). Claude Code and Codex are fine with localhost. Other machines can also use client mode with `--base-url https://yourname.ngrok.dev`.
 
 **SSH tunnel** — `ssh -L 8317:localhost:8317 server` and use `--base-url http://127.0.0.1:8317`.
 

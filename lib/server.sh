@@ -65,14 +65,18 @@ server_install() {
   cp "$CPA_HOME/config/docker-compose.yml" "$tmp"
   write_if_changed "$CPA_COMPOSE_FILE" "$tmp" 644
   rm -f "$tmp"
-  # optional ngrok tunnel: set CPA_NGROK_AUTHTOKEN + CPA_NGROK_DOMAIN in $CPA_ENV_FILE
-  if [ -n "${CPA_NGROK_AUTHTOKEN:-}" ] && [ -n "${CPA_NGROK_DOMAIN:-}" ]; then
+  # optional ngrok tunnel (CPA_NGROK_AUTHTOKEN + CPA_NGROK_DOMAIN, via --ngrok-* or the env file)
+  if [ -n "$CPA_NGROK_AUTHTOKEN" ] && [ -n "$CPA_NGROK_DOMAIN" ]; then
     tmp="$(mktemp)"
     sed -e "s|{{AUTHTOKEN}}|$CPA_NGROK_AUTHTOKEN|" -e "s|{{DOMAIN}}|$CPA_NGROK_DOMAIN|" \
       "$CPA_HOME/config/ngrok.template.yml" >"$tmp"
     write_if_changed "$CPA_RUNTIME_DIR/ngrok/ngrok.yml" "$tmp"
     rm -f "$tmp"
-    printf 'COMPOSE_PROFILES=ngrok\n' >"$CPA_RUNTIME_DIR/.env"
+    tmp="$(mktemp)"; printf 'COMPOSE_PROFILES=ngrok\n' >"$tmp"
+    write_if_changed "$CPA_RUNTIME_DIR/.env" "$tmp" 644; rm -f "$tmp"
+    info "ngrok tunnel: https://$CPA_NGROK_DOMAIN"
+  elif [ -n "$CPA_NGROK_DOMAIN$CPA_NGROK_AUTHTOKEN" ]; then
+    warn "ngrok needs both --ngrok-domain and --ngrok-authtoken; tunnel not configured"
   fi
   [ "${CPA_DRY_RUN:-0}" = 1 ] || { log "docker compose pull"; _dc pull -q; }
 }

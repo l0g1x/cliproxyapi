@@ -16,6 +16,13 @@ _check_server_process() {
   else
     _bad "container not running (cpa server start)"
   fi
+  if [ -n "$CPA_NGROK_DOMAIN" ]; then
+    if docker compose -f "$CPA_COMPOSE_FILE" ps --status running 2>/dev/null | grep -q cli-proxy-ngrok; then
+      _ok "ngrok tunnel container running (https://$CPA_NGROK_DOMAIN)"
+    else
+      _bad "ngrok tunnel container not running (cpa server start)"
+    fi
+  fi
 }
 
 _check_auth_files() {

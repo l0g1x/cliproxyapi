@@ -51,33 +51,45 @@ export CPA_CONTAINER_AUTH_DIR="/root/.cli-proxy-api"
 
 # Values populated by load_env (declared here so every sourcing file sees them defined).
 CPA_MODE=""; CPA_BASE_URL=""; CPA_API_KEY=""; CPA_ROUTING=""
-export CPA_MODE CPA_BASE_URL CPA_API_KEY CPA_ROUTING
+CPA_NGROK_AUTHTOKEN="${CPA_NGROK_AUTHTOKEN:-}"; CPA_NGROK_DOMAIN="${CPA_NGROK_DOMAIN:-}"
+export CPA_MODE CPA_BASE_URL CPA_API_KEY CPA_ROUTING CPA_NGROK_AUTHTOKEN CPA_NGROK_DOMAIN
 
-# ---------- env (mode / base url / key) ----------
+# ---------- env (mode / base url / key / ngrok) ----------
 # Stored as plain KEY=VALUE lines (no quoting/escaping) and read explicitly rather than sourced,
-# so a tampered env file can't execute code.
+# so a tampered env file can't execute code. Environment variables take precedence over the file.
 load_env() {
   [ -f "$CPA_ENV_FILE" ] || return 0
   local key value
   while IFS='=' read -r key value; do
     case "$key" in
-      CPA_MODE)     CPA_MODE=$value ;;
-      CPA_BASE_URL) CPA_BASE_URL=$value ;;
-      CPA_API_KEY)  CPA_API_KEY=$value ;;
-      CPA_ROUTING)  CPA_ROUTING=$value ;;
+      CPA_MODE)            CPA_MODE=$value ;;
+      CPA_BASE_URL)        CPA_BASE_URL=$value ;;
+      CPA_API_KEY)         CPA_API_KEY=$value ;;
+      CPA_ROUTING)         CPA_ROUTING=$value ;;
+      CPA_NGROK_AUTHTOKEN) [ -n "$CPA_NGROK_AUTHTOKEN" ] || CPA_NGROK_AUTHTOKEN=$value ;;
+      CPA_NGROK_DOMAIN)    [ -n "$CPA_NGROK_DOMAIN" ]    || CPA_NGROK_DOMAIN=$value ;;
     esac
   done <"$CPA_ENV_FILE"
 }
-save_env() { # save_env MODE BASE_URL API_KEY [ROUTING=on]
+save_env() { # save_env MODE BASE_URL API_KEY [ROUTING=on] — ngrok fields carried from current values
   mkdir -p "$CPA_STATE_DIR"
   local tmp; tmp="$(mktemp)"
-  printf 'CPA_MODE=%s\nCPA_BASE_URL=%s\nCPA_API_KEY=%s\nCPA_ROUTING=%s\n' "$1" "$2" "$3" "${4:-on}" >"$tmp"
+  {
+    printf 'CPA_MODE=%s\nCPA_BASE_URL=%s\nCPA_API_KEY=%s\nCPA_ROUTING=%s\n' "$1" "$2" "$3" "${4:-on}"
+    [ -n "$CPA_NGROK_AUTHTOKEN" ] && printf 'CPA_NGROK_AUTHTOKEN=%s\n' "$CPA_NGROK_AUTHTOKEN"
+    [ -n "$CPA_NGROK_DOMAIN" ]    && printf 'CPA_NGROK_DOMAIN=%s\n'    "$CPA_NGROK_DOMAIN"
+  } >"$tmp"
   write_if_changed "$CPA_ENV_FILE" "$tmp"
   rm -f "$tmp"
 }
 set_routing() { # set_routing on|off — persists the flag, keeps the other values
   load_env
   save_env "${CPA_MODE:-server}" "${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" "${CPA_API_KEY:-}" "$1"
+}
+# The URL clients should use: the ngrok domain when a tunnel is configured, else loopback.
+# Cursor in particular requires a public URL (its verification runs from Cursor's servers).
+public_base_url() {
+  if [ -n "$CPA_NGROK_DOMAIN" ]; then echo "https://$CPA_NGROK_DOMAIN"; else echo "http://127.0.0.1:$CPA_PORT"; fi
 }
 
 # ---------- backups ----------
