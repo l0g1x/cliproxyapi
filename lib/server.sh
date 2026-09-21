@@ -110,19 +110,27 @@ server_status() {
   fi
 }
 
-server_version() { _dc exec -T cli-proxy-api "$_bin" --help 2>&1 | head -1; }
+server_version() { _dc exec -T cli-proxy-api "$_bin" --help 2>&1 | head -1 || true; }
+
+# Run the binary in the container. Allocate a TTY only when we have one
+# (OAuth flows are interactive; `ssh host cpa …` is not).
+_dc_exec() {
+  local flags=()
+  [ -t 0 ] || flags+=(-T)
+  _dc exec "${flags[@]}" cli-proxy-api "$_bin" "$@"
+}
 
 server_auth() { # runs inside the container; auth files land in $CPA_AUTH_DIR
   case "$1" in
     claude)
       log "Claude OAuth login. Open the printed URL in a browser on this machine."
       info "Headless server? From your laptop first run:  ssh -L 1455:localhost:1455 <this-host>"
-      _dc exec cli-proxy-api "$_bin" --claude-login --no-browser ;;
+      _dc_exec --claude-login --no-browser ;;
     codex)
       log "Codex device-code login"
-      _dc exec cli-proxy-api "$_bin" --codex-device-login ;;
+      _dc_exec --codex-device-login ;;
     *) die "usage: cpa auth claude|codex" ;;
   esac
 }
 
-server_exec() { _dc exec cli-proxy-api "$_bin" "$@"; }
+server_exec() { _dc_exec "$@"; }
