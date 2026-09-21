@@ -93,6 +93,38 @@ grep -q '^model_provider = "cliproxyapi"' "$HOME/.codex/config.toml" || fail "co
 python3 -c 'import json,sys; e=json.load(open(sys.argv[1]))["env"]; assert e["ANTHROPIC_AUTH_TOKEN"]=="cpa-key-2"' "$HOME/.claude/settings.json" || fail "claude on didn't restore"
 pass "off/on round trip (claude + codex)"
 
+# 4c. cursor writer against a minimal synthetic state DB (cursor not running in CI)
+if [ "$(uname -s)" = Darwin ]; then CDB="$HOME/Library/Application Support/Cursor/User/globalStorage/state.vscdb"
+else CDB="$HOME/.config/Cursor/User/globalStorage/state.vscdb"; fi
+mkdir -p "$(dirname "$CDB")"
+python3 - "$CDB" <<'PY2'
+import json, sqlite3, sys
+con = sqlite3.connect(sys.argv[1])
+con.execute("CREATE TABLE ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)")
+blob = {"aiSettings": {"userAddedModels": ["existing-model"], "modelOverrideEnabled": ["default"], "modelOverrideDisabled": ["g6a-max-proxy"]},
+        "availableDefaultModels2": [{"name": "default", "isUserAdded": False}]}
+con.execute("INSERT INTO ItemTable VALUES (?,?)", ("src.vs.platform.reactivestorage.browser.reactiveStorageServiceImpl.persistentStorage.applicationUser", json.dumps(blob)))
+con.commit()
+PY2
+[ "$(PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-cursor.py" status)" = unset ] || fail "cursor status should be unset"
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-cursor.py" on https://new.example g6a-max-proxy g6a-high-proxy 2>/dev/null
+python3 - "$CDB" <<'PY2' || fail "cursor on wrote wrong state"
+import json, sqlite3, sys
+d = json.loads(sqlite3.connect(sys.argv[1]).execute("SELECT value FROM ItemTable").fetchone()[0])
+ai = d["aiSettings"]
+assert d["openAIBaseUrl"] == "https://new.example/v1" and d["useOpenAIKey"] is True
+assert ai["userAddedModels"] == ["existing-model", "g6a-max-proxy", "g6a-high-proxy"]
+assert "g6a-max-proxy" in ai["modelOverrideEnabled"] and "g6a-max-proxy" not in ai["modelOverrideDisabled"]
+recs = {m["name"]: m for m in d["availableDefaultModels2"]}
+assert recs["g6a-max-proxy"]["isUserAdded"] and recs["g6a-max-proxy"]["serverModelName"] == "g6a-max-proxy"
+assert "default" in recs
+PY2
+[ -f "$CDB.applicationUser.bak" ] || fail "cursor row backup missing"
+[ "$(PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-cursor.py" status)" = proxy ] || fail "cursor status should be proxy"
+PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-cursor.py" off 2>/dev/null
+[ "$(PYTHONPATH="$ROOT/lib" python3 "$ROOT/lib/client-cursor.py" status)" = direct ] || fail "cursor status should be direct after off"
+pass "cursor writer (on/off/status, + row backup)"
+
 # 5. config render + key add
 export CPA_DRY_RUN=0
 CFG="$SANDBOX/cliproxyapi.conf"

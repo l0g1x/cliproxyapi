@@ -107,6 +107,14 @@ _report_client() { # _report_client <name> <state> <expected:on|off> <target>
 }
 
 _check_claude() { _report_client "Claude Code" "$(claude_state "$1" "$2")" "$3" "$1"; }
+_check_cursor() { # informational only: Cursor is opt-in and its key can't be verified from here
+  local s; s="$(cursor_state)"
+  case "$s" in
+    proxy)  _ok  "Cursor override on (key pasted? check Settings → Models)" ;;
+    direct) if [ "$1" = off ]; then _ok "Cursor → direct"; else _meh "Cursor override off — cpa on cursor"; fi ;;
+    *)      _meh "Cursor not configured — cpa on cursor" ;;
+  esac
+}
 _check_codex()  { _report_client "Codex"       "$(codex_state  "$1" "$2")" "$3" "$1/v1"; }
 
 routing_status() {
@@ -117,7 +125,7 @@ routing_status() {
   log "routing: ${CPA_ROUTING:-on}  (proxy: $base_url)"
   printf '  %-12s %s\n' "Claude Code" "$(claude_state "$base_url" "$api_key")" >&2
   printf '  %-12s %s\n' "Codex"       "$(codex_state  "$base_url" "$api_key")" >&2
-  printf '  %-12s %s\n' "Cursor"      "manual — check Settings → Models → Override OpenAI Base URL" >&2
+  printf '  %-12s %s\n' "Cursor"      "$(cursor_state)  (API key must be pasted in Settings → Models)" >&2
 }
 
 _check_shell() {
@@ -154,6 +162,7 @@ doctor() {
 
   _check_claude "$base_url" "$api_key" "$routing"
   _check_codex  "$base_url" "$api_key" "$routing"
+  _check_cursor "$routing"
   _check_shell
 
   if [ "$_fail" = 0 ]; then

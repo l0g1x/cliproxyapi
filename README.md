@@ -67,6 +67,7 @@ Both accept a client list: `cpa off codex` leaves Claude Code on the proxy. `cpa
 | `~/cliproxyapi/docker-compose.yml` | Copied from `config/docker-compose.yml` | `<file>.bak` |
 | `~/.claude/settings.json` (on `cpa on`) | Sets `env.ANTHROPIC_BASE_URL` and `env.ANTHROPIC_AUTH_TOKEN`; every other key untouched | `<file>.bak` |
 | `~/.codex/config.toml` (on `cpa on`) | Sets top-level `model_provider = "cliproxyapi"` and replaces/appends the `[model_providers.cliproxyapi]` table; your `model`, `model_reasoning_effort`, projects, MCP servers, etc. are untouched | `<file>.bak` |
+| Cursor `state.vscdb` (on `cpa on cursor`) | Sets `openAIBaseUrl`, `useOpenAIKey`, adds aliases to the model list | affected row → `state.vscdb.applicationUser.bak` |
 | `~/.zshrc` or `~/.bashrc` | Appends one line that sources `shell/aliases.sh` | `<file>.bak` |
 | `~/.config/cliproxyapi/env` | New file: mode, base URL, API key (`0600`) | — |
 
@@ -97,29 +98,33 @@ cpa config sync-aliases && cliproxyapi-restart && cpa models
 
 ## Cursor
 
-Cursor stores its base URL and model list in an opaque SQLite blob and the API key in encrypted storage, so `cpa` doesn't write to it. `cpa cursor` prints exactly what to enter:
+`cpa on cursor` sets everything Cursor needs except the API key:
+
+- ☑ Override OpenAI Base URL → `<proxy>/v1`
+- Model Names → every alias whose upstream this proxy serves (e.g. only `g6a-*` on a Codex-only box)
+
+Cursor stores those in its state database, which `cpa` edits directly (after quitting Cursor, then relaunching it). The **API key** is the one thing it can't write: Cursor encrypts it with a password kept in the login Keychain, which is only available to the GUI session. So `cpa on cursor` ends by printing the key for you to paste once:
 
 ```
-Cursor Settings → Models   (⌘⇧J)
-  1. OpenAI API Key:              <your key>
-  2. ☑ Override OpenAI Base URL:  http://127.0.0.1:8317/v1   → Verify
-  3. Model Names → + Add Model:   f51-high-proxy, g6a-xhigh-proxy, …
+Cursor Settings → Models → OpenAI API Key   (⌘⇧J)
 ```
 
-Two known Cursor quirks: it occasionally unticks "Override OpenAI Base URL" on its own (re-tick it), and custom base URLs power Chat/Agent only — Tab autocomplete stays on Cursor's backend.
+After that, pick e.g. `g6a-max-proxy` in the chat model dropdown. `cpa off cursor` unticks the override; `cpa cursor` prints the manual steps without changing anything.
+
+Cursor is opt-in for `cpa on` / `cpa off` (it isn't in the default client list) because switching it restarts the app. Two known Cursor quirks: it occasionally unticks the override on its own (`cpa on cursor` re-ticks it), and custom base URLs power Chat/Agent only — Tab autocomplete stays on Cursor's backend.
 
 ## Commands and aliases
 
 | Command | |
 |---|---|
 | `cpa install [opts]` | Full install (see above) |
-| `cpa on [claude\|codex\|cursor]` | Route through the proxy |
+| `cpa on [claude\|codex\|cursor]` | Route through the proxy (default: claude + codex) |
 | `cpa off [claude\|codex\|cursor]` | Route directly to the providers |
 | `cpa status` | Current routing per client |
 | `cpa server start\|stop\|restart\|status\|logs\|upgrade\|version` | Manage the container |
 | `cpa auth claude\|codex` | OAuth login |
 | `cpa clients [claude\|codex\|cursor] [--base-url U] [--api-key K]` | (Re)configure clients |
-| `cpa cursor` | Print the Cursor settings |
+| `cpa cursor` | Print the Cursor settings without changing anything |
 | `cpa key` | Print the primary API key |
 | `cpa key add` | Generate and register a new API key; prints only the key |
 | `cpa url` | Print the base URL |
@@ -179,6 +184,7 @@ lib/server.sh            docker compose (+ brew → docker migration on macOS)
 lib/clients.sh           client orchestration + Cursor printout
 lib/client-claude.py     ~/.claude/settings.json writer
 lib/client-codex.py      ~/.codex/config.toml writer
+lib/client-cursor.py     Cursor state.vscdb writer (all but the API key)
 lib/cpa_backup.py        backup policy for the Python writers
 lib/doctor.sh            health checks
 config/config.template.yaml

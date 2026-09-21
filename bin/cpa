@@ -27,13 +27,15 @@ cpa — CLIProxyAPI server + client setup
 
   cpa on  [claude|codex|cursor …] route requests through the proxy   (alias: proxy-on)
   cpa off [claude|codex|cursor …] route requests directly to Anthropic/OpenAI (alias: proxy-off)
+                                  default is claude + codex; `cursor` quits/relaunches Cursor
+                                  and sets everything except the API key (printed to paste)
   cpa status                      which way each client is currently routed
 
   cpa server install|start|stop|restart|status|logs|upgrade|version|exec …
   cpa auth claude|codex           OAuth login (aliases: auth-claude, auth-codex)
   cpa config render|sync-aliases|path|show
   cpa clients [claude|codex|cursor …] [--base-url URL] [--api-key KEY]   same as `on` with overrides
-  cpa cursor                      print the Cursor Settings → Models values
+  cpa cursor                      print the Cursor Settings → Models values (no changes)
   cpa key                         print the primary API key
   cpa key add                     generate + register a new API key; prints only the key
   cpa url                         print the base URL clients use
@@ -201,7 +203,7 @@ main() {
     status)    routing_status ;;
     cursor)
       load_env
-      client_cursor_on "${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" "${CPA_API_KEY:-$(config_primary_key || die 'no key')}" ;;
+      client_cursor_print "${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" "${CPA_API_KEY:-$(config_primary_key || die 'no key')}" ;;
     key)
       case "${1:-}" in
         add) key_add ;;
