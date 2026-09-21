@@ -1,0 +1,27 @@
+# Installed to ~/cliproxyapi/docker-compose.yml by `cpa install` (Linux).
+services:
+  cli-proxy-api:
+    image: eceasy/cli-proxy-api:latest
+    container_name: cli-proxy-api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8317:8317"   # API — loopback only; expose via ngrok/ssh, not the internet
+      - "127.0.0.1:1455:1455"   # Claude OAuth callback (use `ssh -L 1455:localhost:1455` from a laptop)
+    volumes:
+      - ./config.yaml:/CLIProxyAPI/config.yaml
+      - ./auths:/root/.cli-proxy-api
+      - ./logs:/CLIProxyAPI/logs
+      - ./plugins:/CLIProxyAPI/plugins
+
+  # Optional public tunnel. Enabled when COMPOSE_PROFILES=ngrok (cpa sets this if
+  # CPA_NGROK_AUTHTOKEN and CPA_NGROK_DOMAIN are present in ~/.config/cliproxyapi/env).
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: cli-proxy-ngrok
+    restart: unless-stopped
+    profiles: ["ngrok"]
+    command: ["start", "--all", "--config", "/etc/ngrok/ngrok.yml"]
+    volumes:
+      - ./ngrok/ngrok.yml:/etc/ngrok/ngrok.yml:ro
+    depends_on:
+      - cli-proxy-api

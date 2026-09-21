@@ -1,0 +1,8 @@
+version: 3
+agent:
+  authtoken: "{{AUTHTOKEN}}"
+endpoints:
+  - name: cliproxyapi
+    url: https://{{DOMAIN}}
+    upstream:
+      url: http://cli-proxy-api:8317

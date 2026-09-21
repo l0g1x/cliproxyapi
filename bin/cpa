@@ -1,0 +1,186 @@
+#!/usr/bin/env bash
+# cpa — install and manage a CLIProxyAPI server plus the Claude Code / Codex / Cursor clients.
+set -euo pipefail
+
+CPA_HOME="${CPA_HOME:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+export CPA_HOME
+. "$CPA_HOME/lib/common.sh"
+. "$CPA_HOME/lib/config.sh"
+. "$CPA_HOME/lib/clients.sh"
+. "$CPA_HOME/lib/doctor.sh"
+if [ "$CPA_OS" = darwin ]; then . "$CPA_HOME/lib/server-mac.sh"; else . "$CPA_HOME/lib/server-linux.sh"; fi
+
+usage() {
+  cat >&2 <<'EOF'
+cpa — CLIProxyAPI server + client setup
+
+  cpa install [options]           one-shot: server → config → clients → shell aliases → doctor
+      --client                    no server; just point clients at --base-url/--api-key
+      --base-url URL              (client mode) proxy URL, e.g. https://proxy.example.com
+      --api-key KEY               (client mode) proxy bearer token
+      --clients LIST              comma list of claude,codex,cursor   (default: all)
+      --force-config              re-render the server config from the template
+      --dry-run                   show what would change, write nothing
+      --yes                       no prompts
+
+  cpa server install|start|stop|restart|status|logs|upgrade|exec …
+  cpa auth claude|codex           OAuth login (aliases: auth-claude, auth-codex)
+  cpa config render|sync-aliases|path|show
+  cpa clients [claude|codex|cursor …] [--base-url URL] [--api-key KEY]
+  cpa cursor                      print the Cursor Settings → Models values
+  cpa key                         print the primary API key
+  cpa key add                     generate + register a new API key; prints only the key
+  cpa url                         print the base URL clients use
+  cpa models                      list models served (base + aliases)
+  cpa doctor                      health check
+  cpa uninstall                   restore .bak files, remove shell hook (keeps the server)
+
+Env file: ~/.config/cliproxyapi/env   Repo: ~/.cliproxyapi
+EOF
+  exit "${1:-0}"
+}
+
+# ---------------------------------------------------------------- install
+cmd_install() {
+  local mode=server base_url="" api_key="" clients="" force=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --client)        mode=client ;;
+      --base-url)      base_url=$2; shift ;;
+      --api-key)       api_key=$2; shift ;;
+      --clients)       clients=$2; shift ;;
+      --force-config)  force=1 ;;
+      --dry-run)       export CPA_DRY_RUN=1 ;;
+      --yes|-y)        export CPA_YES=1 ;;
+      -h|--help)       usage ;;
+      *) die "unknown option: $1" ;;
+    esac; shift
+  done
+  need python3; need curl
+
+  if [ "$mode" = server ]; then
+    log "server install ($CPA_OS)"
+    server_install
+    if [ -f "$CPA_CONFIG_FILE" ] && [ $force = 0 ]; then
+      api_key="$(config_primary_key || true)"
+      if [ -z "$api_key" ] || [[ "$api_key" == your-api-key* ]]; then
+        warn "config has no usable api-key; re-rendering"; force=1
+      else
+        info "existing config kept: $CPA_CONFIG_FILE (use --force-config to re-render)"
+        config_sync_aliases
+      fi
+    fi
+    if [ ! -f "$CPA_CONFIG_FILE" ] || [ $force = 1 ]; then
+      api_key="${api_key:-$(gen_api_key)}"
+      config_render "$api_key"
+    fi
+    base_url="http://127.0.0.1:$CPA_PORT"
+    [ "${CPA_DRY_RUN:-0}" = 1 ] || { server_start; sleep 2; }
+  else
+    [ -n "$base_url" ] || die "--client requires --base-url"
+    [ -n "$api_key" ]  || die "--client requires --api-key"
+    base_url="${base_url%/}"; base_url="${base_url%/v1}"
+    log "client-only install → $base_url"
+  fi
+
+  save_env "$mode" "$base_url" "$api_key"
+
+  if [ -n "$clients" ]; then
+    local list
+    IFS=, read -r -a list <<<"$clients"
+    clients_all "$base_url" "$api_key" "${list[@]}"
+  else
+    clients_all "$base_url" "$api_key"
+  fi
+
+  # The rc file must contain a literal $HOME so it expands at shell startup, not now.
+  local hook
+  hook="[ -f \"\$HOME/.cliproxyapi/shell/aliases.sh\" ] && . \"\$HOME/.cliproxyapi/shell/aliases.sh\""
+  append_line_once "$(rc_file)" "$hook"
+
+  [ "${CPA_DRY_RUN:-0}" = 1 ] && { log "dry run complete"; return 0; }
+  echo >&2
+  doctor || true
+  echo >&2
+  if [ "$mode" = server ]; then
+    log "next: open a new shell, then run  auth-claude  and/or  auth-codex"
+  else
+    log "next: open a new shell (aliases) — clients are pointed at $base_url"
+  fi
+}
+
+# ---------------------------------------------------------------- dispatch
+main() {
+  local cmd="${1:-}"; shift || true
+  case "$cmd" in
+    install)   cmd_install "$@" ;;
+    server)
+      local sub="${1:-status}"; shift || true
+      case "$sub" in
+        install|start|stop|restart|status|logs|upgrade) "server_$sub" "$@" ;;
+        exec) server_exec "$@" ;;
+        *) die "cpa server install|start|stop|restart|status|logs|upgrade|exec" ;;
+      esac ;;
+    auth)      server_auth "${1:-}" ;;
+    config)
+      local sub="${1:-show}"
+      case "$sub" in
+        render)       load_env; config_render "${CPA_API_KEY:-$(config_primary_key || gen_api_key)}" ;;
+        sync-aliases) config_sync_aliases ;;
+        path)         config_path ;;
+        show)         config_show ;;
+        *) die "cpa config render|sync-aliases|path|show" ;;
+      esac ;;
+    clients)
+      load_env
+      local base_url="${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" api_key="${CPA_API_KEY:-}" which=()
+      while [ $# -gt 0 ]; do
+        case "$1" in
+          --base-url) base_url=$2; shift ;;
+          --api-key)  api_key=$2; shift ;;
+          --dry-run)  export CPA_DRY_RUN=1 ;;
+          *) which+=("$1") ;;
+        esac; shift
+      done
+      [ -n "$api_key" ] || api_key="$(config_primary_key || true)"
+      [ -n "$api_key" ] || die "no API key known; pass --api-key"
+      clients_all "${base_url%/}" "$api_key" "${which[@]:+${which[@]}}" ;;
+    cursor)
+      load_env
+      client_cursor "${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" "${CPA_API_KEY:-$(config_primary_key || die 'no key')}" ;;
+    key)
+      case "${1:-}" in
+        add) key_add ;;
+        "")  load_env; printf '%s\n' "${CPA_API_KEY:-$(config_primary_key || die 'no key')}" ;;
+        *)   die "cpa key [add]" ;;
+      esac ;;
+    url)       load_env; printf '%s\n' "${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" ;;
+    models)
+      load_env
+      local base_url="${CPA_BASE_URL:-http://127.0.0.1:$CPA_PORT}" api_key="${CPA_API_KEY:-$(config_primary_key || die 'no key')}"
+      curl -sf -m 10 -H "Authorization: Bearer $api_key" "$base_url/v1/models" \
+        | python3 -c '
+import json,sys
+ids=sorted(m["id"] for m in json.load(sys.stdin)["data"])
+aliases=set(l.strip() for l in open(sys.argv[1]) if l.strip() and not l.startswith("#"))
+print("base models:");   [print("  "+i) for i in ids if i not in aliases]
+print("aliases:");       [print("  "+i) for i in ids if i in aliases]
+' <(list_aliases) ;;
+    doctor)    doctor ;;
+    uninstall)
+      load_env
+      confirm "Restore ~/.claude/settings.json and ~/.codex/config.toml from .bak and remove the shell hook?" || exit 0
+      for f in "$HOME/.claude/settings.json" "$HOME/.codex/config.toml"; do
+        [ -f "$f.bak" ] && { cp -p "$f.bak" "$f"; log "restored $f from .bak"; }
+      done
+      local rc; rc="$(rc_file)"
+      if grep -qF 'cliproxyapi/shell/aliases.sh' "$rc" 2>/dev/null; then
+        backup_file "$rc"; grep -vF 'cliproxyapi/shell/aliases.sh' "$rc" >"$rc.cpa-tmp" && mv "$rc.cpa-tmp" "$rc"; log "removed shell hook from $rc"
+      fi
+      info "server left in place. macOS: brew services stop cliproxyapi && brew uninstall cliproxyapi"
+      info "                      Linux: docker compose -f ~/cliproxyapi/docker-compose.yml down" ;;
+    -h|--help|help|"") usage 0 ;;
+    *) warn "unknown command: $cmd"; usage 1 ;;
+  esac
+}
+main "$@"

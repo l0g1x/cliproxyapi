@@ -1,0 +1,32 @@
+# Model aliases exposed by the proxy, in addition to (never instead of) the base model list.
+# Every row is emitted with `fork: true` + `force-mapping: true`, so the upstream name stays listed
+# and responses report the alias you asked for.
+#
+# channel   upstream            alias                   effort
+#   channel : oauth-model-alias channel (claude | codex)
+#   effort  : payload override baked into the alias, or "-" for none (client decides)
+#             claude: low | medium | high | max         codex: low | medium | high | xhigh | max
+#
+# Cursor can't set thinking effort per request, so the effort lives in the alias name.
+# After editing: `cpa config sync-aliases && cliproxyapi-restart`
+
+# Claude Fable 5.1
+claude	claude-fable-5-1	f51-proxy	-
+claude	claude-fable-5-1	f51-low-proxy	low
+claude	claude-fable-5-1	f51-medium-proxy	medium
+claude	claude-fable-5-1	f51-high-proxy	high
+claude	claude-fable-5-1	f51-max-proxy	max
+claude	claude-fable-5-1	claude-fable-5-1[1m]	-
+
+# GPT-6 Astra
+codex	gpt-6-astra	g6a-proxy	-
+codex	gpt-6-astra	g6a-low-proxy	low
+codex	gpt-6-astra	g6a-medium-proxy	medium
+codex	gpt-6-astra	g6a-high-proxy	high
+codex	gpt-6-astra	g6a-xhigh-proxy	xhigh
+codex	gpt-6-astra	g6a-max-proxy	max
+
+# Claude Opus 5 / Sonnet 5
+claude	claude-opus-5	o5-proxy	-
+claude	claude-opus-5	claude-opus-5[1m]	-
+claude	claude-sonnet-5	s5-proxy	-
