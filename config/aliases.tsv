@@ -2,10 +2,11 @@
 # Every row is emitted with `fork: true` + `force-mapping: true`, so the upstream name stays listed
 # and responses report the alias you asked for.
 #
-# channel   upstream            alias                   effort
+# channel   upstream            alias                   effort   [tier]
 #   channel : oauth-model-alias channel (claude | codex)
 #   effort  : payload override baked into the alias, or "-" for none (client decides)
 #             claude: low | medium | high | max         codex: low | medium | high | xhigh | max
+#   tier    : optional, codex only — service_tier override (fast | priority | flex)
 #
 # Cursor can't set thinking effort per request, so the effort lives in the alias name.
 # After editing: `cpa config sync-aliases && cliproxyapi-restart`
@@ -25,6 +26,7 @@ codex	gpt-6-astra	g6a-medium-proxy	medium
 codex	gpt-6-astra	g6a-high-proxy	high
 codex	gpt-6-astra	g6a-xhigh-proxy	xhigh
 codex	gpt-6-astra	g6a-max-proxy	max
+codex	gpt-6-astra	g6a-max-fast-proxy	max	fast
 
 # Claude Opus 5 / Sonnet 5
 claude	claude-opus-5	o5-proxy	-
