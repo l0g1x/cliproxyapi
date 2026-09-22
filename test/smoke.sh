@@ -18,6 +18,10 @@ grep -q '"service_tier": "priority"' /tmp/cpa-aliases.yaml || fail "codex fast t
 grep -q '"service_tier": "fast"' /tmp/cpa-aliases.yaml && fail "codex tier 'fast' leaked to the wire (must be priority)"
 grep -A6 'name: "g6a-max-fast-proxy"' /tmp/cpa-aliases.yaml | grep -q '"reasoning.effort": "max"' || fail "g6a-max-fast-proxy lost effort"
 [ "$(grep -c 'fork: true' /tmp/cpa-aliases.yaml)" = "$n_rows" ] || fail "every alias must fork"
+# catalog>wire bridge: alias registers against the catalog model, override rewrites the wire model
+grep -B1 'alias: "o55-high-proxy"' /tmp/cpa-aliases.yaml | grep -q 'name: "claude-opus-5"' || fail "o55 bridge must register against catalog model claude-opus-5"
+grep -A5 'name: "o55-high-proxy"' /tmp/cpa-aliases.yaml | grep -q 'model: "claude-opus-5-5"' || fail "o55 bridge must override wire model"
+grep -q 'user-agent: "claude-cli/2.1.280 (external, cli)"' /tmp/cpa-aliases.yaml || fail "claude-code-version setting not rendered"
 pass "aliases render ($n_rows aliases)"
 
 # 2. YAML validity, if pyyaml happens to be around
@@ -33,6 +37,10 @@ printf 'codex\tgpt-6-astra\tx\tultra\n' >/tmp/cpa-bad.tsv
 python3 "$ROOT/lib/render_aliases.py" /tmp/cpa-bad.tsv >/dev/null 2>&1 && fail "invalid effort not rejected"
 printf 'claude\tclaude-opus-5\tx\thigh\tfast\n' >/tmp/cpa-bad.tsv
 python3 "$ROOT/lib/render_aliases.py" /tmp/cpa-bad.tsv >/dev/null 2>&1 && fail "tier on claude not rejected"
+printf 'codex\tgpt-6-astra>gpt-7\tx\thigh\n' >/tmp/cpa-bad.tsv
+python3 "$ROOT/lib/render_aliases.py" /tmp/cpa-bad.tsv >/dev/null 2>&1 && fail "catalog>wire on codex not rejected"
+printf 'set\tbogus-key\t1\n' >/tmp/cpa-bad.tsv
+python3 "$ROOT/lib/render_aliases.py" /tmp/cpa-bad.tsv >/dev/null 2>&1 && fail "unknown set key not rejected"
 pass "validation rejects bad rows"
 
 # 4. full flow in a sandbox HOME

@@ -21,26 +21,41 @@ CHANNEL_TIERS = {
 # so we must emit the wire value ourselves.
 TIER_WIRE = {"fast": "priority"}
 
+# `set` directives: extra managed config emitted alongside the aliases.
+SETTINGS = {
+    # Version the proxy claims to be when impersonating Claude Code. Anthropic gates new models on
+    # a minimum Claude Code version; upstream's baked-in default lags new releases.
+    "claude-code-version",
+}
+
 
 class Row:
-    __slots__ = ("channel", "upstream", "alias", "effort", "tier")
+    __slots__ = ("channel", "upstream", "wire", "alias", "effort", "tier")
 
-    def __init__(self, channel, upstream, alias, effort, tier):
-        self.channel, self.upstream, self.alias, self.effort, self.tier = channel, upstream, alias, effort, tier
+    def __init__(self, channel, upstream, wire, alias, effort, tier):
+        self.channel, self.upstream, self.wire = channel, upstream, wire
+        self.alias, self.effort, self.tier = alias, effort, tier
 
     @property
     def has_override(self):
-        return self.effort != "-" or self.tier != "-"
+        return self.effort != "-" or self.tier != "-" or self.wire != self.upstream
 
 
 def parse(path):
-    rows = []
+    rows, settings = [], {}
     with open(path, encoding="utf-8") as fh:
         for n, raw in enumerate(fh, 1):
             line = raw.strip()
             if not line or line.startswith("#"):
                 continue
             parts = [p.strip() for p in line.split("\t")]
+            if parts[0] == "set":
+                if len(parts) != 3:
+                    sys.exit(f"{path}:{n}: expected 'set<TAB>key<TAB>value'")
+                if parts[1] not in SETTINGS:
+                    sys.exit(f"{path}:{n}: unknown setting {parts[1]!r} (valid: {sorted(SETTINGS)})")
+                settings[parts[1]] = parts[2]
+                continue
             if len(parts) == 4:
                 parts.append("-")
             if len(parts) != 5:
@@ -48,28 +63,37 @@ def parse(path):
             channel, upstream, alias, effort, tier = parts
             if channel not in CHANNEL_EFFORTS:
                 sys.exit(f"{path}:{n}: unknown channel {channel!r}")
+            # "catalog>wire": route via a model the proxy's catalog knows, but send `wire` upstream.
+            # Bridges the gap until the proxy's model catalog learns a newly released model.
+            wire = upstream
+            if ">" in upstream:
+                upstream, wire = (p.strip() for p in upstream.split(">", 1))
+                if channel != "claude":
+                    sys.exit(f"{path}:{n}: catalog>wire is only verified for the claude channel")
+                if not upstream or not wire or upstream == wire:
+                    sys.exit(f"{path}:{n}: bad catalog>wire spec {parts[1]!r}")
             if effort != "-" and effort not in CHANNEL_EFFORTS[channel]:
                 sys.exit(f"{path}:{n}: effort {effort!r} not valid for {channel} "
                          f"(valid: {sorted(CHANNEL_EFFORTS[channel])})")
             if tier != "-" and tier not in CHANNEL_TIERS[channel]:
                 sys.exit(f"{path}:{n}: tier {tier!r} not valid for {channel} "
                          f"(valid: {sorted(CHANNEL_TIERS[channel]) or 'none'})")
-            if alias == upstream:
+            if alias in (upstream, wire):
                 sys.exit(f"{path}:{n}: alias must differ from upstream name ({alias})")
-            rows.append(Row(channel, upstream, alias, effort, tier))
+            rows.append(Row(channel, upstream, wire, alias, effort, tier))
     seen = set()
     for r in rows:
         if r.alias in seen:
             sys.exit(f"duplicate alias {r.alias!r}")
         seen.add(r.alias)
-    return rows
+    return rows, settings
 
 
 def q(s):
     return '"' + s.replace('"', '\\"') + '"'
 
 
-def render(rows):
+def render(rows, settings):
     out = ["oauth-model-alias:"]
     for channel in ("claude", "codex"):
         chan_rows = [r for r in rows if r.channel == channel]
@@ -90,6 +114,8 @@ def render(rows):
                     f"        - name: {q(r.alias)}",
                     f"          protocol: {q(r.channel)}",
                     "      params:"]
+            if r.wire != r.upstream:
+                out.append(f"        model: {q(r.wire)}")
             if r.channel == "claude":
                 if r.effort != "-":
                     out += ['        "thinking.type": "adaptive"',
@@ -99,19 +125,22 @@ def render(rows):
                     out.append(f'        "reasoning.effort": {q(r.effort)}')
                 if r.tier != "-":
                     out.append(f'        "service_tier": {q(TIER_WIRE.get(r.tier, r.tier))}')
+    if "claude-code-version" in settings:
+        out += ["claude-header-defaults:",
+                f"  user-agent: {q('claude-cli/' + settings['claude-code-version'] + ' (external, cli)')}"]
     return "\n".join(out)
 
 
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__)
-    rows = parse(sys.argv[1])
+    rows, settings = parse(sys.argv[1])
     if "--list" in sys.argv:
         print("\n".join(r.alias for r in rows))
     elif "--pairs" in sys.argv:
         print("\n".join(f"{r.upstream}\t{r.alias}" for r in rows))
     else:
-        print(render(rows))
+        print(render(rows, settings))
 
 
 if __name__ == "__main__":

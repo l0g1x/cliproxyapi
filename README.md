@@ -84,6 +84,7 @@ Why: Cursor can't set thinking effort per request, so the effort lives in the al
 | `claude-fable-5-1` | `f51-proxy` (client decides effort) · `f51-low-proxy` · `f51-medium-proxy` · `f51-high-proxy` · `f51-max-proxy` · `claude-fable-5-1[1m]` |
 | `gpt-6-astra` | `g6a-proxy` · `g6a-low-proxy` · `g6a-medium-proxy` · `g6a-high-proxy` · `g6a-xhigh-proxy` · `g6a-max-proxy` · `g6a-max-fast-proxy` (max effort + Codex Fast mode — ~1.2× generation speed at ~2.4× quota) |
 | `claude-opus-5` | `o5-proxy` · `claude-opus-5[1m]` |
+| `claude-opus-5-5` | `o55-proxy` · `o55-low-proxy` · `o55-medium-proxy` · `o55-high-proxy` · `o55-max-proxy` (see *New-model bridge* below) |
 | `claude-sonnet-5` | `s5-proxy` |
 
 Valid effort levels (verified against the upstream APIs): Claude `low | medium | high | max`; Codex `low | medium | high | xhigh | max`. Codex rows take an optional fifth column for `service_tier` (`fast | priority | flex`); `fast` is rendered as the wire value `priority`, since the `/v1/chat/completions` path Cursor uses doesn't translate it.
@@ -95,6 +96,15 @@ cpa config sync-aliases && cliproxyapi-restart && cpa models
 ```
 
 `sync-aliases` rewrites only the managed region of the config, so anything you've hand-edited elsewhere survives. The TSV is validated (duplicate aliases and invalid effort levels are rejected).
+
+### New-model bridge (temporary)
+
+CLIProxyAPI only routes models in its catalog, so a freshly released model returns `model_not_found` until upstream ships a catalog update. Two things bridge that gap, both expressed in `aliases.tsv`:
+
+- **`catalog>wire` upstream** (Claude only) — `claude-opus-5>claude-opus-5-5` registers the alias against `claude-opus-5` (known to the catalog, so routing picks a Claude OAuth credential) and a `payload.override` rewrites `model` to `claude-opus-5-5` right before the request leaves for Anthropic. Verified on the wire: the upstream response reports `claude-opus-5-5`.
+- **`set claude-code-version 2.1.280`** — Anthropic gates new models on a minimum Claude Code version (`claude_code_version_too_old` otherwise), and upstream's baked-in fingerprint lags. This emits `claude-header-defaults.user-agent`.
+
+Opus 5.5 currently uses this bridge. Once [models#64](https://github.com/router-for-me/models/pull/64) and [CLIProxyAPI#6052](https://github.com/router-for-me/CLIProxyAPI/pull/6052) merge and you've run `cpa server upgrade`, collapse `claude-opus-5>claude-opus-5-5` to `claude-opus-5-5` and drop the `set` row — the aliases keep working, just natively.
 
 ## Cursor
 
